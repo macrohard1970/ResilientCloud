@@ -7,6 +7,9 @@
 
 name: netlab-east
 
+# Container names equal node names (e.g. dc-east-spine1), unique across regions.
+prefix: ""
+
 # ── Management network ────────────────────────────────────────────────
 # Every container gets an IP on 10.255.255.0/24 for OOB access.
 mgmt:
@@ -18,14 +21,14 @@ topology:
   nodes:
 
     # ── Spines (FRR, AS 65001) ────────────────────────────────────────
-    spine1:
+    dc-east-spine1:
       kind: linux
       image: frrouting/frr:10.2.1
       mgmt-ipv4: 10.255.255.11
       binds:
-        - configs/frr/spine1/daemons:/etc/frr/daemons
-        - configs/frr/spine1/frr.conf:/etc/frr/frr.conf
-        - configs/frr/spine1/vtysh.conf:/etc/frr/vtysh.conf
+        - configs/frr/dc-east-spine1/daemons:/etc/frr/daemons
+        - configs/frr/dc-east-spine1/frr.conf:/etc/frr/frr.conf
+        - configs/frr/dc-east-spine1/vtysh.conf:/etc/frr/vtysh.conf
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
@@ -34,14 +37,14 @@ topology:
         - /usr/lib/frr/frrinit.sh start
       user: root
 
-    spine2:
+    dc-east-spine2:
       kind: linux
       image: frrouting/frr:10.2.1
       mgmt-ipv4: 10.255.255.12
       binds:
-        - configs/frr/spine2/daemons:/etc/frr/daemons
-        - configs/frr/spine2/frr.conf:/etc/frr/frr.conf
-        - configs/frr/spine2/vtysh.conf:/etc/frr/vtysh.conf
+        - configs/frr/dc-east-spine2/daemons:/etc/frr/daemons
+        - configs/frr/dc-east-spine2/frr.conf:/etc/frr/frr.conf
+        - configs/frr/dc-east-spine2/vtysh.conf:/etc/frr/vtysh.conf
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
@@ -51,14 +54,14 @@ topology:
       user: root
 
     # ── Leaves (FRR, unique ASNs per leaf) ───────────────────────────
-    leaf1:
+    dc-east-leaf1:
       kind: linux
       image: frrouting/frr:10.2.1
       mgmt-ipv4: 10.255.255.21
       binds:
-        - configs/frr/leaf1/daemons:/etc/frr/daemons
-        - configs/frr/leaf1/frr.conf:/etc/frr/frr.conf
-        - configs/frr/leaf1/vtysh.conf:/etc/frr/vtysh.conf
+        - configs/frr/dc-east-leaf1/daemons:/etc/frr/daemons
+        - configs/frr/dc-east-leaf1/frr.conf:/etc/frr/frr.conf
+        - configs/frr/dc-east-leaf1/vtysh.conf:/etc/frr/vtysh.conf
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
@@ -67,14 +70,14 @@ topology:
         - /usr/lib/frr/frrinit.sh start
       user: root
 
-    leaf2:
+    dc-east-leaf2:
       kind: linux
       image: frrouting/frr:10.2.1
       mgmt-ipv4: 10.255.255.22
       binds:
-        - configs/frr/leaf2/daemons:/etc/frr/daemons
-        - configs/frr/leaf2/frr.conf:/etc/frr/frr.conf
-        - configs/frr/leaf2/vtysh.conf:/etc/frr/vtysh.conf
+        - configs/frr/dc-east-leaf2/daemons:/etc/frr/daemons
+        - configs/frr/dc-east-leaf2/frr.conf:/etc/frr/frr.conf
+        - configs/frr/dc-east-leaf2/vtysh.conf:/etc/frr/vtysh.conf
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
@@ -83,14 +86,14 @@ topology:
         - /usr/lib/frr/frrinit.sh start
       user: root
 
-    leaf3:
+    dc-east-leaf3:
       kind: linux
       image: frrouting/frr:10.2.1
       mgmt-ipv4: 10.255.255.23
       binds:
-        - configs/frr/leaf3/daemons:/etc/frr/daemons
-        - configs/frr/leaf3/frr.conf:/etc/frr/frr.conf
-        - configs/frr/leaf3/vtysh.conf:/etc/frr/vtysh.conf
+        - configs/frr/dc-east-leaf3/daemons:/etc/frr/daemons
+        - configs/frr/dc-east-leaf3/frr.conf:/etc/frr/frr.conf
+        - configs/frr/dc-east-leaf3/vtysh.conf:/etc/frr/vtysh.conf
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
@@ -99,14 +102,14 @@ topology:
         - /usr/lib/frr/frrinit.sh start
       user: root
 
-    leaf4:
+    dc-east-leaf4:
       kind: linux
       image: frrouting/frr:10.2.1
       mgmt-ipv4: 10.255.255.24
       binds:
-        - configs/frr/leaf4/daemons:/etc/frr/daemons
-        - configs/frr/leaf4/frr.conf:/etc/frr/frr.conf
-        - configs/frr/leaf4/vtysh.conf:/etc/frr/vtysh.conf
+        - configs/frr/dc-east-leaf4/daemons:/etc/frr/daemons
+        - configs/frr/dc-east-leaf4/frr.conf:/etc/frr/frr.conf
+        - configs/frr/dc-east-leaf4/vtysh.conf:/etc/frr/vtysh.conf
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
@@ -141,42 +144,42 @@ topology:
       user: root
 
     # ── Endpoint hosts (Alpine) ──────────────────────────────────────
-    host-a:
+    dc-east-host-a:
       kind: linux
       image: alpine:3.20
       mgmt-ipv4: 10.255.255.31
       binds:
-        - configs/hosts/host-a.init.sh:/init.sh
+        - configs/hosts/dc-east/dc-east-host-a.init.sh:/init.sh
       exec:
         - sh /init.sh
       user: root
 
-    host-b:
+    dc-east-host-b:
       kind: linux
       image: alpine:3.20
       mgmt-ipv4: 10.255.255.32
       binds:
-        - configs/hosts/host-b.init.sh:/init.sh
+        - configs/hosts/dc-east/dc-east-host-b.init.sh:/init.sh
       exec:
         - sh /init.sh
       user: root
 
-    host-c:
+    dc-east-host-c:
       kind: linux
       image: alpine:3.20
       mgmt-ipv4: 10.255.255.33
       binds:
-        - configs/hosts/host-c.init.sh:/init.sh
+        - configs/hosts/dc-east/dc-east-host-c.init.sh:/init.sh
       exec:
         - sh /init.sh
       user: root
 
-    host-d:
+    dc-east-host-d:
       kind: linux
       image: alpine:3.20
       mgmt-ipv4: 10.255.255.34
       binds:
-        - configs/hosts/host-d.init.sh:/init.sh
+        - configs/hosts/dc-east/dc-east-host-d.init.sh:/init.sh
       exec:
         - sh /init.sh
       user: root
@@ -185,25 +188,25 @@ topology:
   links:
 
     # Spine-leaf underlay (OSPF + eBGP)
-    - endpoints: ["spine1:eth1", "leaf1:eth1"]
-    - endpoints: ["spine1:eth2", "leaf2:eth1"]
-    - endpoints: ["spine1:eth3", "leaf3:eth1"]
-    - endpoints: ["spine1:eth4", "leaf4:eth1"]
+    - endpoints: ["dc-east-spine1:eth1", "dc-east-leaf1:eth1"]
+    - endpoints: ["dc-east-spine1:eth2", "dc-east-leaf2:eth1"]
+    - endpoints: ["dc-east-spine1:eth3", "dc-east-leaf3:eth1"]
+    - endpoints: ["dc-east-spine1:eth4", "dc-east-leaf4:eth1"]
 
-    - endpoints: ["spine2:eth1", "leaf1:eth2"]
-    - endpoints: ["spine2:eth2", "leaf2:eth2"]
-    - endpoints: ["spine2:eth3", "leaf3:eth2"]
-    - endpoints: ["spine2:eth4", "leaf4:eth2"]
+    - endpoints: ["dc-east-spine2:eth1", "dc-east-leaf1:eth2"]
+    - endpoints: ["dc-east-spine2:eth2", "dc-east-leaf2:eth2"]
+    - endpoints: ["dc-east-spine2:eth3", "dc-east-leaf3:eth2"]
+    - endpoints: ["dc-east-spine2:eth4", "dc-east-leaf4:eth2"]
 
     # Spine-to-spine (iBGP + OSPF)
-    - endpoints: ["spine1:eth5", "spine2:eth5"]
+    - endpoints: ["dc-east-spine1:eth5", "dc-east-spine2:eth5"]
 
     # WAN edge uplinks to spines
-    - endpoints: ["spine1:eth6", "wan-east:eth1"]
-    - endpoints: ["spine2:eth6", "wan-east:eth2"]
+    - endpoints: ["dc-east-spine1:eth6", "wan-east:eth1"]
+    - endpoints: ["dc-east-spine2:eth6", "wan-east:eth2"]
 
     # Leaf-to-host links (access ports)
-    - endpoints: ["leaf1:eth3", "host-a:eth1"]
-    - endpoints: ["leaf2:eth3", "host-b:eth1"]
-    - endpoints: ["leaf3:eth3", "host-c:eth1"]
-    - endpoints: ["leaf4:eth3", "host-d:eth1"]
+    - endpoints: ["dc-east-leaf1:eth3", "dc-east-host-a:eth1"]
+    - endpoints: ["dc-east-leaf2:eth3", "dc-east-host-b:eth1"]
+    - endpoints: ["dc-east-leaf3:eth3", "dc-east-host-c:eth1"]
+    - endpoints: ["dc-east-leaf4:eth3", "dc-east-host-d:eth1"]

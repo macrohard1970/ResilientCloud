@@ -3,7 +3,7 @@
 # IP: 10.11.1.1/24 | Gateway: 10.11.1.254 (leaf1 eth3)
 
 # Install networking tools
-apk add --no-cache iproute2 iputils ping bash 2>/dev/null
+apk add --no-cache iproute2 iputils >/dev/null 2>&1 || true
 
 # Configure the data-plane interface (eth1 → leaf1)
 ip addr flush dev eth1
