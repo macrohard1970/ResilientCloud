@@ -62,7 +62,7 @@ Expanding the single-host Containerlab spine-leaf lab into a three-region AWS da
 
 | Datacenter | AWS Region | Latency to DC-East | Rationale |
 |-----------|-----------|-------------------|-----------|
-| DC-East | us-east-1 | — (baseline) | Primary, existing infra |
+| DC-East | us-east-1 | — (baseline) | Primary |
 | DC-West | us-west-2 | ~60ms RTT | US West coast, cross-continent |
 | DC-EU | eu-west-1 | ~80ms RTT | Europe, trans-Atlantic |
 
@@ -405,4 +405,4 @@ bfd
 
 ### Backward Compatibility
 
-The existing single-host lab continues to work unchanged. DC-East is the existing lab with a WAN edge router added. The multi-region expansion is additive — deploying DC-West and DC-EU does not break the existing setup. You can run DC-East alone (Phase 1), add WAN connectivity (Phase 2), or deploy all three regions (Phase 3) at any pace.
+The single-region lab (`topology.clab.yml`) still works on its own. DC-East is that fabric with a WAN edge router added, built in a new VPC like the other two regions. The multi-region expansion is additive: deploying DC-West and DC-EU does not change DC-East. You can run DC-East alone (Phase 1), add WAN connectivity (Phase 2), or deploy all three regions (Phase 3) at any pace.

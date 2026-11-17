@@ -11,7 +11,7 @@ gantt
     axisFormat %H:%M
 
     section Phase 1 - Independent regions
-    DC-East VPC update + EC2        :p1a, 00:00, 10m
+    DC-East VPC + EC2               :p1a, 00:00, 10m
     DC-West VPC + EC2               :p1b, 00:00, 10m
     DC-EU VPC + EC2                 :p1c, 00:00, 10m
     Install Docker + Containerlab   :p1d, after p1a, 15m

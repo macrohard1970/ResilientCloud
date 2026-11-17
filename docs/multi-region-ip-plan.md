@@ -53,8 +53,7 @@ Each region gets a dedicated VPC with public, private, and WAN subnets. The VPC 
 | Private | 10.0.2.0/24 | us-east-1b | Containerlab EC2 instance |
 | WAN | 10.0.3.0/28 | us-east-1a | Reserved; GRE runs from the lab host primary IP |
 
-VPC ID: `vpc-0287cc4e662371bcb` (existing)
-IGW: `igw-0fcd99507b2227246` (existing)
+Created by `build_region` in [deployment-phases.md](deployment-phases.md), like the other two regions.
 
 ### VPC — DC-West (us-west-2)
 

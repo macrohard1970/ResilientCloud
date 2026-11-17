@@ -2,6 +2,18 @@
 
 All fixes from the November 2026 review. Each entry gives the problem, why it mattered, and what changed. Every fix was checked against FRR 10.2.1 and Alpine containers in Docker; a full multi-host Containerlab deployment was not run (see "Not verified" at the end).
 
+## Deployment guide after decommission
+
+The original DC-East VPC (`vpc-0287cc4e662371bcb`), its subnets, security groups and both t3.micro instances were decommissioned on 2026-11-17, so `docs/deployment-phases.md` no longer treats DC-East as existing infrastructure.
+
+| Problem | Fix |
+|---------|-----|
+| Phase 1A reused hard-coded DC-East VPC/subnet/SG/IGW IDs that no longer exist | One `build_region` function builds every region from scratch (VPC, 3 subnets, IGW, route tables, SGs, key pair, bastion, lab host) |
+| Phase 1C (DC-EU) only said "same pattern" and pointed at a script that creates no AWS resources, so `$VPC_E`, `$SG_PRIV_E`, `$PUB_RT_E` used in Phase 2 were never set | DC-EU is built by the same function; IDs exported as `<NAME>_EAST/WEST/EU` and saved to `~/netlab-ids.env` |
+| Teardown deleted VPCs without their dependencies (fails while subnets, SGs or the IGW exist) and kept DC-East | `teardown_region` removes instances, SGs, subnets, route tables, IGW, VPC and key pair in dependency order, for all three regions |
+
+Checked with `bash -n` and a stubbed AWS CLI: 27 IDs exported, 36 delete calls issued in teardown.
+
 ## FRR configs — `8d8c837`
 
 | Problem | Impact | Fix |

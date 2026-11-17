@@ -22,151 +22,100 @@ Deploy three VPCs with EC2 instances, each running Containerlab independently. N
 # Verify AWS access
 aws sts get-caller-identity
 
-# Ensure key pair exists (create if needed)
-aws ec2 create-key-pair --key-name networking-lab \
-  --query 'KeyMaterial' --output text --region us-east-1 > ~/.ssh/networking-lab.pem
-chmod 400 ~/.ssh/networking-lab.pem
+# Key pairs are created per region by build_region (Phase 1A).
+# If a "networking-lab" key pair already exists in a region, delete it first
+# or the create-key-pair step fails.
 ```
 
-### Phase 1A: DC-East (us-east-1) — Update Existing Infra
+### Phase 1A: Define the Region Builder
 
-The existing VPC (`networking-lab-vpc`, 10.0.0.0/16) already has public/private subnets and two t3.micro instances. We need to:
-1. Add a WAN subnet (10.0.3.0/28)
-2. Update the route table to include an IGW route for the public subnet
-3. Launch a larger EC2 instance for Containerlab (t3.xlarge or t3.2xlarge)
-4. Tag all resources consistently
+All three regions are built the same way, from scratch. Paste this function
+once; it creates one region's VPC, subnets, internet gateway, route tables,
+security groups, key pair, bastion and lab host, and exports the IDs that
+Phase 2 needs as `<NAME>_<SUFFIX>` variables (e.g. `VPC_EAST`, `SG_PRIV_WEST`).
 
 ```bash
-# ── DC-EAST: us-east-1 ──────────────────────────────────────────
+# build_region <region> <suffix> <vpc-cidr-prefix> <az-a> <az-b>
+build_region() {
+  local R=$1 S=$2 P=$3 AZA=$4 AZB=$5 tag=netlab-${2,,}
+  local VPC PUB PRIV WAN IGW PUBRT PRIVRT SGPUB SGPRIV AMI
+  VPC=$(aws ec2 create-vpc --cidr-block $P.0.0/16 --region $R \
+    --tag-specifications "ResourceType=vpc,Tags=[{Key=Name,Value=$tag-vpc}]" \
+    --query Vpc.VpcId --output text)
+  aws ec2 modify-vpc-attribute --vpc-id $VPC --enable-dns-hostnames --region $R
 
-REGION=us-east-1
-VPC_ID=vpc-0287cc4e662371bcb        # existing
-IGW_ID=igw-0fcd99507b2227246        # existing
-PUB_SUB=subnet-0cd12e907aa08b4b3    # existing 10.0.1.0/24
-PRIV_SUB=subnet-0a4a7bdcaa742bbdf   # existing 10.0.2.0/24
+  PUB=$(aws ec2 create-subnet --vpc-id $VPC --cidr-block $P.1.0/24 --availability-zone $AZA --region $R \
+    --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=$tag-public}]" --query Subnet.SubnetId --output text)
+  PRIV=$(aws ec2 create-subnet --vpc-id $VPC --cidr-block $P.2.0/24 --availability-zone $AZB --region $R \
+    --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=$tag-private}]" --query Subnet.SubnetId --output text)
+  # Reserved; GRE runs from the lab host's primary IP
+  WAN=$(aws ec2 create-subnet --vpc-id $VPC --cidr-block $P.3.0/28 --availability-zone $AZA --region $R \
+    --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=$tag-wan}]" --query Subnet.SubnetId --output text)
 
-# Create WAN subnet
-WAN_SUB=$(aws ec2 create-subnet \
-  --vpc-id $VPC_ID \
-  --cidr-block 10.0.3.0/28 \
-  --availability-zone us-east-1a \
-  --query 'Subnet.SubnetId' --output text --region $REGION)
-aws ec2 create-tags --resources $WAN_SUB \
-  --tags Key=Name,Value=networking-lab-wan-subnet --region $REGION
+  IGW=$(aws ec2 create-internet-gateway --region $R \
+    --tag-specifications "ResourceType=internet-gateway,Tags=[{Key=Name,Value=$tag-igw}]" \
+    --query InternetGateway.InternetGatewayId --output text)
+  aws ec2 attach-internet-gateway --internet-gateway-id $IGW --vpc-id $VPC --region $R
 
-# Find latest Amazon Linux 2023 AMI
-AMI_ID=$(aws ssm get-parameters \
-  --names /aws/service/ami-amazon-linux/2023/recommended/ami_id \
-  --query 'Parameters[0].Value' --output text --region $REGION)
+  PUBRT=$(aws ec2 create-route-table --vpc-id $VPC --region $R --query RouteTable.RouteTableId --output text)
+  aws ec2 create-route --route-table-id $PUBRT --destination-cidr-block 0.0.0.0/0 --gateway-id $IGW --region $R >/dev/null
+  aws ec2 associate-route-table --route-table-id $PUBRT --subnet-id $PUB --region $R >/dev/null
+  PRIVRT=$(aws ec2 create-route-table --vpc-id $VPC --region $R --query RouteTable.RouteTableId --output text)
+  aws ec2 associate-route-table --route-table-id $PRIVRT --subnet-id $PRIV --region $R >/dev/null
 
-# Launch Containerlab host (private subnet, no public IP)
-aws ec2 run-instances \
-  --image-id $AMI_ID \
-  --instance-type t3.xlarge \
-  --subnet-id $PRIV_SUB \
-  --security-group-ids sg-0720662ad963afe34 \
-  --key-name networking-lab \
-  --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=50,VolumeType=gp3}' \
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=netlab-east}]' \
-  --region $REGION
+  SGPUB=$(aws ec2 create-security-group --vpc-id $VPC --group-name $tag-public-sg \
+    --description "Bastion SSH" --region $R --query GroupId --output text)
+  # Lab default: SSH from anywhere. Narrow to your IP: --cidr <your-ip>/32
+  aws ec2 authorize-security-group-ingress --group-id $SGPUB --protocol tcp --port 22 --cidr 0.0.0.0/0 --region $R >/dev/null
+  SGPRIV=$(aws ec2 create-security-group --vpc-id $VPC --group-name $tag-private-sg \
+    --description "Lab host" --region $R --query GroupId --output text)
+  aws ec2 authorize-security-group-ingress --group-id $SGPRIV --protocol tcp --port 22 --source-group $SGPUB --region $R >/dev/null
+  aws ec2 authorize-security-group-ingress --group-id $SGPRIV --protocol all --cidr $P.0.0/16 --region $R >/dev/null
 
-# Launch bastion (public subnet, with public IP)
-aws ec2 run-instances \
-  --image-id $AMI_ID \
-  --instance-type t3.micro \
-  --subnet-id $PUB_SUB \
-  --security-group-ids sg-0a6826440476ab48f \
-  --key-name networking-lab \
-  --associate-public-ip-address \
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=netlab-east-bastion}]' \
-  --region $REGION
+  # Key pair per region (EC2 key pairs are regional)
+  aws ec2 create-key-pair --key-name networking-lab --region $R \
+    --query KeyMaterial --output text > ~/.ssh/networking-lab-${S,,}.pem
+  chmod 400 ~/.ssh/networking-lab-${S,,}.pem
 
-# Add IGW route to public route table
-PUB_RT=$(aws ec2 describe-route-tables \
-  --filters "Name=vpc-id,Values=$VPC_ID" "Name=association.subnet-id,Values=$PUB_SUB" \
-  --query 'RouteTables[0].RouteTableId' --output text --region $REGION)
-aws ec2 create-route --route-table-id $PUB_RT \
-  --destination-cidr-block 0.0.0.0/0 --gateway-id $IGW_ID \
-  --region $REGION
+  AMI=$(aws ssm get-parameters --names /aws/service/ami-amazon-linux/2023/recommended/ami_id \
+    --query 'Parameters[0].Value' --output text --region $R)
+  aws ec2 run-instances --image-id $AMI --instance-type t3.xlarge --subnet-id $PRIV \
+    --security-group-ids $SGPRIV --key-name networking-lab --region $R \
+    --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=50,VolumeType=gp3}' \
+    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$tag}]" >/dev/null
+  aws ec2 run-instances --image-id $AMI --instance-type t3.micro --subnet-id $PUB \
+    --security-group-ids $SGPUB --key-name networking-lab --associate-public-ip-address --region $R \
+    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$tag-bastion}]" >/dev/null
+
+  export VPC_$S=$VPC IGW_$S=$IGW PUB_SUB_$S=$PUB PRIV_SUB_$S=$PRIV WAN_SUB_$S=$WAN \
+         PUB_RT_$S=$PUBRT PRIV_RT_$S=$PRIVRT SG_PUB_$S=$SGPUB SG_PRIV_$S=$SGPRIV
+  echo "$S: vpc=$VPC public=$PUB private=$PRIV sg-private=$SGPRIV"
+}
 ```
 
-### Phase 1B: DC-West (us-west-2) — New VPC
+### Phase 1B: Build All Three Regions
 
 ```bash
-# ── DC-WEST: us-west-2 ───────────────────────────────────────────
+build_region us-east-1 EAST 10.0 us-east-1a us-east-1b
+build_region us-west-2 WEST 10.1 us-west-2a us-west-2b
+build_region eu-west-1 EU   10.2 eu-west-1a eu-west-1b
 
-REGION=us-west-2
-
-# Create VPC
-VPC_W=$(aws ec2 create-vpc --cidr-block 10.1.0.0/16 \
-  --query 'Vpc.VpcId' --output text --region $REGION)
-aws ec2 create-tags --resources $VPC_W \
-  --tags Key=Name,Value=networking-lab-vpc-west --region $REGION
-aws ec2 modify-vpc-attribute --vpc-id $VPC_W --enable-dns-hostnames --region $REGION
-
-# Subnets
-PUB_SUB_W=$(aws ec2 create-subnet --vpc-id $VPC_W \
-  --cidr-block 10.1.1.0/24 --availability-zone us-west-2a \
-  --query 'Subnet.SubnetId' --output text --region $REGION)
-aws ec2 create-tags --resources $PUB_SUB_W --tags Key=Name,Value=netlab-west-public --region $REGION
-
-PRIV_SUB_W=$(aws ec2 create-subnet --vpc-id $VPC_W \
-  --cidr-block 10.1.2.0/24 --availability-zone us-west-2b \
-  --query 'Subnet.SubnetId' --output text --region $REGION)
-aws ec2 create-tags --resources $PRIV_SUB_W --tags Key=Name,Value=netlab-west-private --region $REGION
-
-WAN_SUB_W=$(aws ec2 create-subnet --vpc-id $VPC_W \
-  --cidr-block 10.1.3.0/28 --availability-zone us-west-2a \
-  --query 'Subnet.SubnetId' --output text --region $REGION)
-aws ec2 create-tags --resources $WAN_SUB_W --tags Key=Name,Value=netlab-west-wan --region $REGION
-
-# IGW
-IGW_W=$(aws ec2 create-internet-gateway --query 'InternetGateway.InternetGatewayId' --output text --region $REGION)
-aws ec2 attach-internet-gateway --internet-gateway-id $IGW_W --vpc-id $VPC_W --region $REGION
-
-# Route tables
-PUB_RT_W=$(aws ec2 create-route-table --vpc-id $VPC_W --query 'RouteTable.RouteTableId' --output text --region $REGION)
-aws ec2 create-route --route-table-id $PUB_RT_W --destination-cidr-block 0.0.0.0/0 --gateway-id $IGW_W --region $REGION
-aws ec2 associate-route-table --route-table-id $PUB_RT_W --subnet-id $PUB_SUB_W --region $REGION
-PRIV_RT_W=$(aws ec2 create-route-table --vpc-id $VPC_W --query 'RouteTable.RouteTableId' --output text --region $REGION)
-aws ec2 associate-route-table --route-table-id $PRIV_RT_W --subnet-id $PRIV_SUB_W --region $REGION
-
-# Security groups
-SG_PUB_W=$(aws ec2 create-security-group --vpc-id $VPC_W \
-  --group-name netlab-west-public-sg --description "Public SSH" \
-  --query 'GroupId' --output text --region $REGION)
-aws ec2 authorize-security-group-ingress --group-id $SG_PUB_W --protocol tcp --port 22 --cidr 0.0.0.0/0 --region $REGION
-
-SG_PRIV_W=$(aws ec2 create-security-group --vpc-id $VPC_W \
-  --group-name netlab-west-private-sg --description "Private lab" \
-  --query 'GroupId' --output text --region $REGION)
-aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_W --protocol tcp --port 22 --source-group $SG_PUB_W --region $REGION
-aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_W --protocol all --cidr 10.1.0.0/16 --region $REGION
-
-# Key pair + AMI
-aws ec2 create-key-pair --key-name networking-lab \
-  --query 'KeyMaterial' --output text --region $REGION > ~/.ssh/networking-lab-west.pem
-chmod 400 ~/.ssh/networking-lab-west.pem
-AMI_W=$(aws ssm get-parameters --names /aws/service/ami-amazon-linux/2023/recommended/ami_id \
-  --query 'Parameters[0].Value' --output text --region $REGION)
-
-# Launch instances
-aws ec2 run-instances --image-id $AMI_W --instance-type t3.xlarge \
-  --subnet-id $PRIV_SUB_W --security-group-ids $SG_PRIV_W --key-name networking-lab \
-  --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=50,VolumeType=gp3}' \
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=netlab-west}]' --region $REGION
-
-aws ec2 run-instances --image-id $AMI_W --instance-type t3.micro \
-  --subnet-id $PUB_SUB_W --security-group-ids $SG_PUB_W --key-name networking-lab \
-  --associate-public-ip-address \
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=netlab-west-bastion}]' --region $REGION
+# Keep the IDs for Phase 2 and teardown (new shells need them)
+env | grep -E '^(VPC|IGW|PUB_SUB|PRIV_SUB|WAN_SUB|PUB_RT|PRIV_RT|SG_PUB|SG_PRIV)_(EAST|WEST|EU)=' \
+  | sed 's/^/export /' > ~/netlab-ids.env
+# Later: source ~/netlab-ids.env
 ```
 
-### Phase 1C: DC-EU (eu-west-1) — New VPC
+| Resource | DC-East (us-east-1) | DC-West (us-west-2) | DC-EU (eu-west-1) |
+|----------|--------------------|--------------------|-------------------|
+| VPC | `netlab-east-vpc` 10.0.0.0/16 | `netlab-west-vpc` 10.1.0.0/16 | `netlab-eu-vpc` 10.2.0.0/16 |
+| Public subnet (bastion) | 10.0.1.0/24 | 10.1.1.0/24 | 10.2.1.0/24 |
+| Private subnet (lab host) | 10.0.2.0/24 | 10.1.2.0/24 | 10.2.2.0/24 |
+| WAN subnet (reserved) | 10.0.3.0/28 | 10.1.3.0/28 | 10.2.3.0/28 |
+| Instances | `netlab-east`, `netlab-east-bastion` | `netlab-west`, `netlab-west-bastion` | `netlab-eu`, `netlab-eu-bastion` |
+| SSH key | `~/.ssh/networking-lab-east.pem` | `~/.ssh/networking-lab-west.pem` | `~/.ssh/networking-lab-eu.pem` |
 
-Same pattern as DC-West with `eu-west-1` region, `10.2.0.0/16` VPC CIDR, and `10.2.{1,2,3}.0` subnets. See `scripts/deploy-multi-region.sh` for the full script.
-
-### Phase 1D: Provision Containerlab on Each EC2 Host
+### Phase 1C: Provision Containerlab on Each EC2 Host
 
 After EC2 instances are running, SSH to each lab host via its bastion:
 
@@ -207,21 +156,21 @@ Connect the three VPCs with cross-region peering connections.
 ```bash
 # East ↔ West
 PCX_EW=$(aws ec2 create-vpc-peering-connection \
-  --vpc-id vpc-0287cc4e662371bcb --peer-vpc-id $VPC_W \
+  --vpc-id $VPC_EAST --peer-vpc-id $VPC_WEST \
   --peer-region us-west-2 \
   --query 'VpcPeeringConnection.VpcPeeringConnectionId' --output text --region us-east-1)
 aws ec2 accept-vpc-peering-connection --vpc-peering-connection-id $PCX_EW --region us-west-2
 
 # East ↔ EU
 PCX_EE=$(aws ec2 create-vpc-peering-connection \
-  --vpc-id vpc-0287cc4e662371bcb --peer-vpc-id $VPC_E \
+  --vpc-id $VPC_EAST --peer-vpc-id $VPC_EU \
   --peer-region eu-west-1 \
   --query 'VpcPeeringConnection.VpcPeeringConnectionId' --output text --region us-east-1)
 aws ec2 accept-vpc-peering-connection --vpc-peering-connection-id $PCX_EE --region eu-west-1
 
 # West ↔ EU
 PCX_WE=$(aws ec2 create-vpc-peering-connection \
-  --vpc-id $VPC_W --peer-vpc-id $VPC_E --peer-region eu-west-1 \
+  --vpc-id $VPC_WEST --peer-vpc-id $VPC_EU --peer-region eu-west-1 \
   --query 'VpcPeeringConnection.VpcPeeringConnectionId' --output text --region us-west-2)
 aws ec2 accept-vpc-peering-connection --vpc-peering-connection-id $PCX_WE --region eu-west-1
 ```
@@ -230,7 +179,7 @@ aws ec2 accept-vpc-peering-connection --vpc-peering-connection-id $PCX_WE --regi
 
 ```bash
 # DC-East: add routes to 10.1.0.0/16 and 10.2.0.0/16 via peering
-for RT in $PUB_RT $PRIV_RT; do
+for RT in $PUB_RT_EAST $PRIV_RT_EAST; do
   aws ec2 create-route --route-table-id $RT --destination-cidr-block 10.1.0.0/16 \
     --vpc-peering-connection-id $PCX_EW --region us-east-1
   aws ec2 create-route --route-table-id $RT --destination-cidr-block 10.2.0.0/16 \
@@ -238,7 +187,7 @@ for RT in $PUB_RT $PRIV_RT; do
 done
 
 # DC-West: add routes to 10.0.0.0/16 and 10.2.0.0/16 via peering
-for RT in $PUB_RT_W $PRIV_RT_W; do
+for RT in $PUB_RT_WEST $PRIV_RT_WEST; do
   aws ec2 create-route --route-table-id $RT --destination-cidr-block 10.0.0.0/16 \
     --vpc-peering-connection-id $PCX_EW --region us-west-2
   aws ec2 create-route --route-table-id $RT --destination-cidr-block 10.2.0.0/16 \
@@ -246,7 +195,7 @@ for RT in $PUB_RT_W $PRIV_RT_W; do
 done
 
 # DC-EU: add routes to 10.0.0.0/16 and 10.1.0.0/16 via peering
-for RT in $PUB_RT_E $PRIV_RT_E; do
+for RT in $PUB_RT_EU $PRIV_RT_EU; do
   aws ec2 create-route --route-table-id $RT --destination-cidr-block 10.0.0.0/16 \
     --vpc-peering-connection-id $PCX_EE --region eu-west-1
   aws ec2 create-route --route-table-id $RT --destination-cidr-block 10.1.0.0/16 \
@@ -259,21 +208,21 @@ done
 ```bash
 # Allow all traffic between VPC CIDRs (lab environment)
 # DC-East private SG:
-aws ec2 authorize-security-group-ingress --group-id sg-0720662ad963afe34 \
+aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_EAST \
   --protocol all --cidr 10.1.0.0/16 --region us-east-1
-aws ec2 authorize-security-group-ingress --group-id sg-0720662ad963afe34 \
+aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_EAST \
   --protocol all --cidr 10.2.0.0/16 --region us-east-1
 
 # DC-West private SG:
-aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_W \
+aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_WEST \
   --protocol all --cidr 10.0.0.0/16 --region us-west-2
-aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_W \
+aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_WEST \
   --protocol all --cidr 10.2.0.0/16 --region us-west-2
 
 # DC-EU private SG:
-aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_E \
+aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_EU \
   --protocol all --cidr 10.0.0.0/16 --region eu-west-1
-aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_E \
+aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_EU \
   --protocol all --cidr 10.1.0.0/16 --region eu-west-1
 ```
 
@@ -388,24 +337,51 @@ docker exec wan-east vtysh -c "configure terminal" -c "interface tun-west" -c "n
 
 ## Teardown
 
+Stopping is enough between sessions (only EBS is billed while stopped):
+
 ```bash
-# On each lab host (dc-east | dc-west | dc-eu):
-scripts/deploy-multi-region.sh destroy dc-east
+source ~/netlab-ids.env
+for R in us-east-1 us-west-2 eu-west-1; do
+  ids=$(aws ec2 describe-instances --region $R --filters "Name=tag:Name,Values=netlab-*" \
+    "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output text)
+  [ -n "$ids" ] && aws ec2 stop-instances --region $R --instance-ids $ids
+done
+```
 
-# Cheaper than terminating while you still need the lab: stop the instances
-aws ec2 stop-instances --instance-ids <east-id> --region us-east-1
+Full decommission (irreversible):
 
-# Terminate EC2 instances in each region
-aws ec2 terminate-instances --instance-ids <east-id> --region us-east-1
-aws ec2 terminate-instances --instance-ids <west-id> --region us-west-2
-aws ec2 terminate-instances --instance-ids <eu-id> --region eu-west-1
+```bash
+source ~/netlab-ids.env
+# 1. Lab containers (on each lab host, if still running)
+scripts/deploy-multi-region.sh destroy dc-east     # dc-west / dc-eu on the others
 
-# Delete VPC peering connections
-aws ec2 delete-vpc-peering-connection --vpc-peering-connection-id $PCX_EW --region us-east-1
-aws ec2 delete-vpc-peering-connection --vpc-peering-connection-id $PCX_EE --region us-east-1
+# 2. Peering connections
+for pcx in $PCX_EW $PCX_EE; do aws ec2 delete-vpc-peering-connection --vpc-peering-connection-id $pcx --region us-east-1; done
 aws ec2 delete-vpc-peering-connection --vpc-peering-connection-id $PCX_WE --region us-west-2
 
-# Delete VPCs (DC-West and DC-EU; keep DC-East existing infra):
-aws ec2 delete-vpc --vpc-id $VPC_W --region us-west-2
-aws ec2 delete-vpc --vpc-id $VPC_E --region eu-west-1
+# 3. Each region: instances (EBS root volumes delete with them), then the VPC in dependency order
+teardown_region() {  # <region> <suffix>
+  local R=$1 S=$2; local v; v() { eval echo \$${1}_$S; }
+  ids=$(aws ec2 describe-instances --region $R --filters "Name=vpc-id,Values=$(v VPC)" \
+    "Name=instance-state-name,Values=pending,running,stopping,stopped" --query 'Reservations[].Instances[].InstanceId' --output text)
+  [ -n "$ids" ] && aws ec2 terminate-instances --region $R --instance-ids $ids >/dev/null \
+    && aws ec2 wait instance-terminated --region $R --instance-ids $ids
+  # The private SG references the public SG, so clear rules before deleting either
+  for sg in $(v SG_PRIV) $(v SG_PUB); do
+    perms=$(aws ec2 describe-security-groups --region $R --group-ids $sg --query 'SecurityGroups[0].IpPermissions' --output json)
+    [ "$perms" != "[]" ] && aws ec2 revoke-security-group-ingress --region $R --group-id $sg --ip-permissions "$perms" >/dev/null
+  done
+  aws ec2 delete-security-group --region $R --group-id $(v SG_PRIV)
+  aws ec2 delete-security-group --region $R --group-id $(v SG_PUB)
+  for sn in $(v PUB_SUB) $(v PRIV_SUB) $(v WAN_SUB); do aws ec2 delete-subnet --region $R --subnet-id $sn; done
+  for rt in $(v PUB_RT) $(v PRIV_RT); do aws ec2 delete-route-table --region $R --route-table-id $rt; done
+  aws ec2 detach-internet-gateway --region $R --internet-gateway-id $(v IGW) --vpc-id $(v VPC)
+  aws ec2 delete-internet-gateway --region $R --internet-gateway-id $(v IGW)
+  aws ec2 delete-vpc --region $R --vpc-id $(v VPC)
+  aws ec2 delete-key-pair --region $R --key-name networking-lab
+  echo "$S decommissioned"
+}
+teardown_region us-east-1 EAST
+teardown_region us-west-2 WEST
+teardown_region eu-west-1 EU
 ```
