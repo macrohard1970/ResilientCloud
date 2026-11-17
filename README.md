@@ -30,7 +30,7 @@ A multi-region resilient cloud networking lab built entirely with free and open-
 
 ```
     ┌─────────┐         ┌─────────┐
-    │ spine1  │═════════│ spine2  │    FRR (AS 65001, iBGP, route reflectors)
+    │ spine1  │═════════│ spine2  │    FRR (AS 65001, iBGP between spines)
     └────┬────┘         └────┬────┘    OSPF area 0 underlay
    ┌──────┼──────────┐    ┌───┼──────────┐
    │      │          │    │   │          │
@@ -72,7 +72,7 @@ A multi-region resilient cloud networking lab built entirely with free and open-
 | Metrics | Prometheus + Grafana | Apache-2.0 / AGPL-3.0 |
 | Observability | Suzieq | Apache-2.0 |
 | Config validation | Batfish | Apache-2.0 |
-| Telemetry | gNMIc | BSD-3-Clause |
+| Telemetry | frr_exporter | MIT |
 | DNS/DHCP | dnsmasq | GPL-2.0 |
 
 ## Repository Structure
@@ -95,25 +95,31 @@ ResilientCloud/
 │       ├── monitoring-observability.md # Telemetry, metrics, and validation flow
 │       ├── automation-workflow.md    # Deploy scripts, Containerlab, Ansible
 │       └── security-access.md        # Trust boundaries, SGs, access path
+├── bin/                                # frr_exporter binary (downloaded, git-ignored)
 ├── configs/
 │   ├── frr/
-│   │   ├── spine1/ spine2/ leaf1-4/      # DC-East (original + WAN edge)
-│   │   ├── dc-west-spine1/2/ leaf1-4/   # DC-West
-│   │   ├── dc-eu-spine1/2/ leaf1-4/     # DC-EU
-│   │   └── wan-east/ wan-west/ wan-eu/   # WAN edge routers
+│   │   ├── dc-east-{spine1,spine2,leaf1..4}/   # DC-East fabric
+│   │   ├── dc-west-{spine1,spine2,leaf1..4}/   # DC-West fabric
+│   │   ├── dc-eu-{spine1,spine2,leaf1..4}/     # DC-EU fabric
+│   │   └── wan-east/ wan-west/ wan-eu/         # WAN edges (frr.conf + tunnels.sh)
 │   └── hosts/
-│       ├── host-a..d.init.sh            # DC-East hosts
-│       ├── dc-west/host-a..d.init.sh    # DC-West hosts
-│       └── dc-eu/host-a..d.init.sh      # DC-EU hosts
+│       ├── dc-east/dc-east-host-{a..d}.init.sh
+│       ├── dc-west/dc-west-host-{a..d}.init.sh
+│       └── dc-eu/dc-eu-host-{a..d}.init.sh
 ├── automation/ansible/
-│   ├── inventory.yml                   # Single-region inventory
-│   ├── inventory-multi-region.yml      # Multi-region inventory
-│   ├── group_vars/                     # Per-group variables
-│   └── playbooks/deploy-configs.yml     # Config deployment playbook
-├── monitoring/                         # Prometheus, Grafana, Suzieq, Batfish, gNMIc, dnsmasq
+│   ├── inventory.yml                   # Single-region (DC-East, no WAN edge)
+│   ├── inventory-multi-region.yml      # All 33 devices; use -l dc_east|dc_west|dc_eu
+│   ├── requirements.yml                # community.docker collection
+│   ├── group_vars/                     # routers / spines / leaves
+│   └── playbooks/deploy-configs.yml    # Push configs, reload FRR, verify
+├── monitoring/                         # Per-region Prometheus + Grafana; optional SuzieQ, Batfish, dnsmasq
+│   ├── env/<region>.env                # Region settings for docker compose
+│   └── prometheus/targets/<region>.yml # frr_exporter targets
 ├── scripts/
-│   ├── deploy.sh                       # Single-region deploy
-│   └── deploy-multi-region.sh          # Multi-region deploy/destroy/status
+│   ├── deploy.sh                       # Single-region deploy/destroy/status
+│   ├── deploy-multi-region.sh          # Per-region deploy/destroy/status
+│   ├── gre-nat.sh                      # Host NAT so GRE reaches the WAN edge container
+│   └── fetch-frr-exporter.sh           # Download frr_exporter (pinned, checksummed)
 ├── topology.clab.yml                   # DC-East single-region topology
 ├── topology-dc-east.clab.yml           # DC-East with WAN edge
 ├── topology-dc-west.clab.yml           # DC-West with WAN edge
@@ -124,73 +130,76 @@ ResilientCloud/
 
 ### Phase 1: Deploy Independent Regions
 
-Each region deploys as a standalone Containerlab lab on an EC2 instance:
+Each region runs on its own EC2 lab host. Prerequisites: Docker with the compose
+plugin, Containerlab, and for Ansible `ansible-core` plus the `community.docker`
+collection.
 
 ```bash
-# On each EC2 host (DC-East, DC-West, DC-EU):
-git clone https://github.com/macrohard80/ResilientCloud.git ResilientCloud && cd ResilientCloud
+# On each EC2 host (example: DC-East; use dc-west / dc-eu on the others)
+git clone https://github.com/macrohard80/ResilientCloud.git && cd ResilientCloud
+scripts/fetch-frr-exporter.sh                     # optional: FRR metrics for Prometheus
+scripts/deploy-multi-region.sh deploy dc-east     # topology + Prometheus/Grafana
 
-# Deploy the region-specific topology
-sudo containerlab deploy -t topology-dc-east.clab.yml   # or -dc-west / -dc-eu
-
-# Push FRR configs via Ansible
-ansible-playbook -i automation/ansible/inventory-multi-region.yml \
-  automation/ansible/playbooks/deploy-configs.yml
-
-# Start monitoring stack
-cd monitoring && docker compose up -d
+# Re-push configs after editing configs/frr/* (no restart needed)
+cd automation/ansible
+ansible-galaxy collection install -r requirements.yml
+ansible-playbook -i inventory-multi-region.yml playbooks/deploy-configs.yml -l dc_east
 ```
+
+Optional monitoring: `MON_PROFILES="batfish dns" scripts/deploy-multi-region.sh deploy dc-east`.
+See [monitoring/README.md](monitoring/README.md).
 
 ### Phase 2: VPC Peering Full-Mesh
 
-Create cross-region VPC peering connections and update route tables. See `docs/deployment-phases.md` for the full AWS CLI commands.
+Create cross-region VPC peering connections and update route tables and
+security groups (allow IP protocol 47, GRE, between the lab hosts). See
+`docs/deployment-phases.md` for the AWS CLI commands.
 
 ### Phase 3: WAN Edge BGP
 
-After VPC peering is active, set the GRE tunnel endpoint IPs and deploy WAN edge configs:
+Redeploy each region with the other two lab hosts' private IPs. The WAN edge
+creates its GRE tunnels at startup and `gre-nat.sh` forwards GRE to it:
 
 ```bash
-# On DC-East EC2 host, set remote IPs for GRE tunnels:
-export LOCAL_IP=<dc-east-private-ip>
-export REMOTE_WEST=<dc-west-private-ip>
-export REMOTE_EU=<dc-eu-private-ip>
-
-# Redeploy with WAN edge configs (Ansible or manual)
-ansible-playbook -i automation/ansible/inventory-multi-region.yml \
-  automation/ansible/playbooks/deploy-configs.yml
+# DC-East host
+REMOTE_WEST=<dc-west-private-ip> REMOTE_EU=<dc-eu-private-ip> scripts/deploy-multi-region.sh deploy dc-east
+# DC-West host
+REMOTE_EAST=<dc-east-private-ip> REMOTE_EU=<dc-eu-private-ip> scripts/deploy-multi-region.sh deploy dc-west
+# DC-EU host
+REMOTE_EAST=<dc-east-private-ip> REMOTE_WEST=<dc-west-private-ip> scripts/deploy-multi-region.sh deploy dc-eu
 ```
 
 ### Verify Cross-Region Connectivity
 
 ```bash
 # DC-East → DC-West
-docker exec clab-netlab-east-host-a ping -c 3 10.11.1.1
+docker exec dc-east-host-a ping -c 3 10.11.1.1
 
 # DC-East → DC-EU
-docker exec clab-netlab-east-host-a ping -c 3 10.12.1.1
+docker exec dc-east-host-a ping -c 3 10.12.1.1
 
 # DC-West → DC-EU
-docker exec clab-netlab-west-host-a ping -c 3 10.12.1.1
+docker exec dc-west-host-a ping -c 3 10.12.1.1
 
 # Show BGP sessions on WAN edge
-docker exec clab-netlab-east-wan-east vtysh -c "show ip bgp summary"
+docker exec wan-east vtysh -c "show ip bgp summary"
 
 # Trace cross-region path
-docker exec clab-netlab-east-host-a traceroute 10.11.1.1
+docker exec dc-east-host-a traceroute 10.11.1.1
 ```
 
 ### Test Failover
 
 ```bash
 # Shut down East↔West tunnel, verify traffic reroutes through EU:
-docker exec clab-netlab-east-wan-east vtysh -c \
+docker exec wan-east vtysh -c \
   "configure terminal" -c "interface tun-west" -c "shutdown"
 
 # Trace should show hop through wan-eu:
-docker exec clab-netlab-east-host-a traceroute 10.11.1.1
+docker exec dc-east-host-a traceroute 10.11.1.1
 
 # Restore:
-docker exec clab-netlab-east-wan-east vtysh -c \
+docker exec wan-east vtysh -c \
   "configure terminal" -c "interface tun-west" -c "no shutdown"
 ```
 
@@ -201,14 +210,15 @@ docker exec clab-netlab-east-wan-east vtysh -c \
 - [Deployment Phases](docs/deployment-phases.md) — 3-phase rollout with AWS CLI commands
 - [Cost Estimate](docs/cost-estimate.md) — AWS monthly cost breakdown
 - [Architecture Diagrams](docs/diagrams/) — Mermaid diagrams for all components
+- [Changelog](CHANGELOG.md) — Fixes and their reasons
 
 ## Requirements
 
-- 3 AWS EC2 instances (t3.xlarge minimum, t3.2xlarge recommended) — one per region
+- 3 AWS EC2 instances (t3.xlarge minimum) — one per region; stop them when idle
 - AWS VPC peering support (cross-region)
 - Docker Engine 24.0+
 - Containerlab 0.55+
-- Ansible 2.14+
+- Ansible core 2.14+ with `community.docker` (optional)
 - 4+ vCPU, 16+ GB RAM, 50 GB disk per host
 
 ## License

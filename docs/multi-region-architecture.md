@@ -37,7 +37,7 @@ Expanding the single-host Containerlab spine-leaf lab into a three-region AWS da
 
 ```
     ┌─────────┐         ┌─────────┐
-    │ spine1  │═════════│ spine2  │    FRR (AS 65001, iBGP, route reflectors)
+    │ spine1  │═════════│ spine2  │    FRR (AS 65001, iBGP between spines)
     │ AS 65001│         │ AS 65001│    OSPF area 0 underlay
     └────┬────┘         └────┬────┘
    ┌──────┼──────────┐    ┌───┼──────────┐
@@ -83,7 +83,7 @@ Two regions give you a single peering link — no mesh, no alternate path. Three
 | EC2 — bastion | 1 | t3.micro, public, SSH gateway |
 | EC2 — lab host | 1 | t3.xlarge (min) or t3.2xlarge (recommended) |
 | Containerlab topology | 1 | 2 spines, 4 leaves, 4 hosts, 1 WAN edge |
-| Monitoring stack | 1 | Prometheus, Grafana, Suzieq, Batfish, gNMIc, dnsmasq |
+| Monitoring stack | 1 | Prometheus + Grafana (default); SuzieQ, Batfish, dnsmasq optional |
 | VPC peering connections | 2 | One to each other region (full mesh = 3 total) |
 
 ---
@@ -104,7 +104,7 @@ The WAN edge router is the bridge between the local Containerlab fabric and the 
 └─────────────────────────────────────────────────────────────────────┘
                               │
                     eBGP to spines (AS 65001)
-                    Route-reflector client on spines
+                    eBGP neighbor of both spines
                               │
                     ┌─────────┴──────────┐
                     │   WAN EDGE ROUTER   │
@@ -125,13 +125,13 @@ The WAN edge router is the bridge between the local Containerlab fabric and the 
 
 ### WAN Edge Responsibilities
 
-1. **Local fabric peering**: eBGP to both spines (AS 65001), treated as a route-reflector client. Receives all local host /24s from the spines.
+1. **Local fabric peering**: eBGP to both spines (AS 65001). Receives all local host /24s from the spines.
 
 2. **Inter-region peering**: eBGP to the other two regions' WAN edge routers over GRE tunnels. Advertises local host subnets, learns remote host subnets.
 
-3. **Route injection**: Remote host subnets learned via inter-region eBGP are re-advertised to the local spines, which reflect them to all leaves. This makes remote /24s reachable from local hosts.
+3. **Route injection**: Remote /16 aggregates learned via inter-region eBGP are re-advertised to the local spines, which pass them to all leaves over eBGP. This makes remote hosts reachable from local hosts.
 
-4. **Route filtering**: Only host /24s and loopback /32s are exchanged across the WAN. Internal underlay P2P links, management networks, and services networks are not advertised externally.
+4. **Route filtering**: Only the region /16 aggregates cross the WAN (route-maps `WAN-IN`, `WAN-OUT`, `FABRIC-OUT` in `configs/frr/wan-*/frr.conf`). Host /24s, loopbacks, underlay links, management and services networks stay inside the region.
 
 ### GRE Tunnel Design
 
@@ -145,7 +145,7 @@ GRE tunnels encapsulate BGP and data traffic between WAN edge routers, traversin
 │  ┌─────────┐  │    VPC Peering     │  ┌─────────┐  │
 │  │wan-edge │  │◄──────────────────►│  │wan-edge │  │
 │  │FRR cont.│  │  GRE over VPC peer │  │FRR cont.│  │
-│  │tun0     │──┤                    ├──│tun0     │  │
+│  │tun-west │──┤                    ├──│tun-east │  │
 │  └─────────┘  │                    │  └─────────┘  │
 │               │                    │               │
 │  Host route:  │                    │  Host route:  │
@@ -156,10 +156,10 @@ GRE tunnels encapsulate BGP and data traffic between WAN edge routers, traversin
 
 **How the tunnel works:**
 
-1. The wan-edge FRR container creates a GRE tunnel interface (`tun0`) with a /30 from the 10.110.0.0/24 range.
-2. The GRE outer header uses the EC2 host's VPC private IP as source and the remote host's VPC private IP as destination.
+1. `tunnels.sh` (Containerlab exec) creates one GRE interface per remote region (`tun-west`, `tun-eu`, `tun-east`, MTU 1476). FRR assigns each a /30 from 10.110.0.0/24.
+2. The GRE outer source is the container's management IP; the destination is the remote EC2 host's VPC private IP (`REMOTE_*` env vars). `scripts/gre-nat.sh` on the EC2 host masquerades outbound GRE to the host's VPC IP and DNATs inbound GRE (IP protocol 47) to the WAN edge container.
 3. The EC2 host's route table sends the remote VPC CIDR through the VPC peering connection.
-4. BGP sessions between WAN edge routers run over the GRE tunnels using the /30 tunnel IPs.
+4. BGP sessions between WAN edge routers run between their loopbacks; a static /32 route per remote loopback points into the matching tunnel.
 5. Data traffic (host-to-host across regions) also flows through the tunnels, encapsulated in GRE.
 
 **Why GRE over direct VPC peering routing:**
@@ -272,17 +272,17 @@ DC-East host-a (10.10.1.1) pings DC-West host-a (10.11.1.1):
 
 | WAN Edge | Advertises | To |
 |----------|-----------|-----|
-| wan-east | 10.10.0.0/16 (aggregated), 10.255.0.0/24 (loopbacks) | wan-west, wan-eu |
-| wan-west | 10.11.0.0/16 (aggregated), 10.254.0.0/24 (loopbacks) | wan-east, wan-eu |
-| wan-eu | 10.12.0.0/16 (aggregated), 10.253.0.0/24 (loopbacks) | wan-east, wan-west |
+| wan-east | 10.10.0.0/16 (own aggregate) + 10.11/16, 10.12/16 (transit) | wan-west, wan-eu |
+| wan-west | 10.11.0.0/16 (own aggregate) + 10.10/16, 10.12/16 (transit) | wan-east, wan-eu |
+| wan-eu | 10.12.0.0/16 (own aggregate) + 10.10/16, 10.11/16 (transit) | wan-east, wan-west |
 
 **What each WAN edge advertises to local spines:**
 
 | WAN Edge | Advertises | To |
 |----------|-----------|-----|
-| wan-east | 10.11.0.0/16, 10.12.0.0/16, 10.254.0.0/24, 10.253.0.0/24 | spine1, spine2 |
-| wan-west | 10.10.0.0/16, 10.12.0.0/16, 10.255.0.0/24, 10.253.0.0/24 | spine1, spine2 |
-| wan-eu | 10.10.0.0/16, 10.11.0.0/16, 10.255.0.0/24, 10.254.0.0/24 | spine1, spine2 |
+| wan-east | 10.11.0.0/16, 10.12.0.0/16 | dc-east-spine1, dc-east-spine2 |
+| wan-west | 10.10.0.0/16, 10.12.0.0/16 | dc-west-spine1, dc-west-spine2 |
+| wan-eu | 10.10.0.0/16, 10.11.0.0/16 | dc-eu-spine1, dc-eu-spine2 |
 
 ### Route Aggregation
 
@@ -294,7 +294,7 @@ Each WAN edge aggregates its region's four /24 host subnets into a single /16 ad
 | DC-West | 10.11.1.0/24, .2.0/24, .3.0/24, .4.0/24 | 10.11.0.0/16 |
 | DC-EU | 10.12.1.0/24, .2.0/24, .3.0/24, .4.0/24 | 10.12.0.0/16 |
 
-This reduces the BGP table size and isolates internal subnet changes from the WAN. Individual /24s are still advertised to local spines; only the /16 aggregate crosses the WAN.
+The WAN edge builds the aggregate with `aggregate-address` from the /24s its spines send it, so the /16 is only advertised while at least one local /24 exists. Individual /24s stay inside the region; only the /16 crosses the WAN. Transit aggregates are re-advertised so the third region can carry traffic when a direct tunnel fails.
 
 ### BGP Path Selection and Load Balancing
 
@@ -310,21 +310,15 @@ BGP prefers the shorter AS path (direct). The transitive path serves as backup. 
 
 ### Route Policies
 
-**Outbound to remote WAN edges:**
-- Advertise only the local region's /16 aggregate and /24 loopback range
-- Apply `AS-path prepend` on the backup path if needed for active/backup design
+Applied on every WAN edge (`configs/frr/wan-*/frr.conf`):
 
-**Inbound from remote WAN edges:**
-- Accept only expected /16 aggregates and /24 loopback ranges
-- Reject anything else (route filtering via prefix-list)
+| Route-map | Direction | Permits | Effect |
+|-----------|-----------|---------|--------|
+| `WAN-OUT` | to remote WAN edges | own /16 aggregate, the two remote /16s | Own region plus transit for failover |
+| `WAN-IN` | from remote WAN edges | the two remote /16s | Rejects anything else, including our own /16 |
+| `FABRIC-OUT` | to local spines | the two remote /16s | Fabric learns only remote aggregates |
 
-**Outbound to local spines:**
-- Advertise all remote /16 aggregates and loopback /24s
-- Spines reflect these to all leaves via route-reflector
-
-**Inbound from local spines:**
-- Accept local region's /24 host subnets and loopback /32s
-- Reject anything learned from remote WAN edges (prevent loops)
+Loops are prevented by eBGP AS-path checks. Each WAN edge has a unique ASN, so a route that already passed through a region is rejected when it comes back.
 
 ---
 
@@ -344,7 +338,7 @@ BGP prefers the shorter AS path (direct). The transitive path serves as backup. 
 
 ### Resilience Layers
 
-1. **Fabric layer (per region)**: Dual spines with iBGP + route reflection. Any single spine failure is handled by the surviving spine. BFD-enabled sessions detect failures in under 1 second.
+1. **Fabric layer (per region)**: Dual spines (iBGP between them, eBGP to each leaf). Any single spine failure is handled by the surviving spine. BFD-enabled sessions detect failures in under 1 second.
 
 2. **WAN layer**: Full-mesh eBGP between three WAN edge routers. Loss of any single peering link leaves two remaining. Traffic automatically reroutes through the third region. BFD on all WAN BGP sessions.
 
@@ -358,22 +352,22 @@ BGP prefers the shorter AS path (direct). The transitive path serves as backup. 
 ! On all WAN edge BGP neighbors:
 neighbor X.X.X.X timers 3 9          ! Keepalive 3s, hold 9s
 neighbor X.X.X.X timers connect 5    ! Connect retry 5s
-neighbor X.X.X.X bfd                  ! Enable BFD for sub-second detection
+neighbor X.X.X.X bfd profile WAN     ! bgpd creates the BFD session (multihop, loopbacks)
 
 ! BFD profile:
 bfd
- peer X.X.X.X
+ profile WAN
   transmit-interval 300
   receive-interval 300
   detect-multiplier 3
- !                               ! Detection time: 300ms × 3 = 900ms
+ exit                            ! Detection time: 300ms × 3 = 900ms
 ```
 
 ### High-Availability Considerations
 
 | Component | HA Approach | Notes |
 |-----------|-------------|-------|
-| Spines | 2 per region, active-active | iBGP between spines, route reflectors |
+| Spines | 2 per region, active-active | iBGP between spines, eBGP to leaves and WAN edge |
 | WAN edge | 1 per region | Single point of failure per region (acceptable for lab) |
 | VPC peering | 3 connections (full mesh) | Any 2 still form a connected graph |
 | BGP sessions | BFD-enabled, fast timers | <10s convergence |
@@ -392,7 +386,7 @@ bfd
 |-----------|---------|-------------|--------|
 | Containerlab topology | 2 spines, 4 leaves, 4 hosts | +1 WAN edge router per region | Add wan-edge node + 2 links to spines |
 | FRR configs | 6 router configs | +1 wan-edge config per region | New FRR config for WAN edge |
-| Spine configs | Route-reflectors for 4 leaves | +1 route-reflector client (wan-edge) | Add wan-edge as RR client |
+| Spine configs | eBGP to 4 leaves | +1 eBGP neighbor (wan-edge) | Add wan-edge neighbor |
 | IP plan | Single region | 3 regions, unique CIDRs | See multi-region-ip-plan.md |
 | Ansible inventory | 6 routers, 4 hosts, 6 services | ×3 regions | Region-aware inventory |
 | Deploy script | Single host | 3 EC2 hosts + VPC infra | Multi-region deploy script |
@@ -403,8 +397,8 @@ bfd
 - Containerlab topology structure (spine-leaf design)
 - FRR version and daemon configuration
 - OSPF area 0 underlay design
-- BGP route-reflector pattern
-- Monitoring stack (Prometheus, Grafana, Suzieq, Batfish, gNMIc, dnsmasq)
+- eBGP leaf-spine pattern (no route reflection needed)
+- Monitoring stack (Prometheus + Grafana; SuzieQ, Batfish, dnsmasq as optional profiles)
 - Ansible automation framework
 - Alpine Linux endpoint hosts
 - All open-source licensing

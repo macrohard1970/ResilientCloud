@@ -23,13 +23,12 @@ Every component in this lab is free and open-source:
 | Containerlab | BSD-3-Clause | Free |
 | FRRouting (FRR) | GPL-2.0 | Free |
 | Alpine Linux | MIT | Free |
-| VyOS | GPLv2 (free rolling release) | Free |
 | Ansible | GPL-3.0 | Free |
 | Prometheus | Apache-2.0 | Free |
 | Grafana (OSS edition) | AGPL-3.0 | Free |
 | Suzieq | Apache-2.0 | Free |
 | Batfish | Apache-2.0 | Free |
-| gNMIc | BSD-3-Clause | Free |
+| frr_exporter | MIT | Free |
 | dnsmasq | GPL-2.0 | Free |
 | Docker Engine | Apache-2.0 | Free |
 

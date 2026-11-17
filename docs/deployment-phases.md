@@ -171,26 +171,29 @@ Same pattern as DC-West with `eu-west-1` region, `10.2.0.0/16` VPC CIDR, and `10
 After EC2 instances are running, SSH to each lab host via its bastion:
 
 ```bash
-# Install Docker + Containerlab
-sudo dnf install -y docker
+# Install Docker, the compose plugin, git and Containerlab (Amazon Linux 2023)
+sudo dnf install -y docker git
 sudo systemctl enable --now docker
-sudo usermod -aG docker $USER
+sudo usermod -aG docker $USER && newgrp docker
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo curl -fsSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
+  https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 bash -c "$(curl -sL https://get.containerlab.dev)"
 
-# Clone repo, deploy region-specific topology
+# Clone the repo and deploy this host's region (dc-east | dc-west | dc-eu)
 git clone https://github.com/macrohard80/ResilientCloud.git && cd ResilientCloud
-sudo containerlab deploy -t topology.clab.yml          # region-specific
-ansible-playbook -i inventory.yml playbooks/deploy-configs.yml
-cd monitoring && docker compose up -d
+scripts/fetch-frr-exporter.sh                  # optional: FRR metrics
+scripts/deploy-multi-region.sh deploy dc-east  # topology + Prometheus/Grafana
 ```
 
 ### Phase 1 Verification
 
 ```bash
 # Each host: verify lab is running
-containerlab inspect -t topology.clab.yml
-docker exec clab-netlab-spine1 vtysh -c "show ip bgp summary"
-docker exec clab-netlab-host-a ping -c 3 10.10.3.1   # intra-region only
+sudo containerlab inspect -t topology-dc-east.clab.yml
+docker exec dc-east-spine1 vtysh -c "show ip bgp summary"
+docker exec dc-east-host-a ping -c 3 10.10.3.1   # intra-region only
 ```
 
 ---
@@ -274,6 +277,10 @@ aws ec2 authorize-security-group-ingress --group-id $SG_PRIV_E \
   --protocol all --cidr 10.1.0.0/16 --region eu-west-1
 ```
 
+The rules above allow all traffic between the VPCs, which includes GRE. The
+minimum the WAN needs is IP protocol 47 (GRE) between the three lab hosts,
+e.g. `--ip-permissions IpProtocol=47,IpRanges=[{CidrIp=10.1.2.0/24}]`.
+
 ### Phase 2 Verification
 
 ```bash
@@ -296,48 +303,62 @@ Deploy the WAN edge FRR routers with GRE tunnels and BGP for cross-region route 
 ### Phase 3A: Enable Host-Level Forwarding
 
 ```bash
-# On each EC2 lab host:
-sudo sysctl -w net.ipv4.ip_forward=1
-echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.d/99-lab.conf
+# On each EC2 lab host (gre-nat.sh also sets this at runtime):
+echo 'net.ipv4.ip_forward = 1' | sudo tee /etc/sysctl.d/99-lab.conf
+sudo sysctl --system
 ```
 
-### Phase 3B: Deploy WAN Edge Configs
+### Phase 3B: Redeploy Each Region With Its WAN Peers
+
+The WAN edge builds its GRE tunnels at startup from `REMOTE_*`, and the deploy
+script runs `scripts/gre-nat.sh` so inbound GRE reaches the container.
 
 ```bash
-# On each EC2 host, deploy updated FRR configs including wan-edge:
-cd ResilientCloud/automation/ansible
-ansible-playbook -i inventory.yml playbooks/deploy-configs.yml
+# DC-East host
+REMOTE_WEST=<dc-west-private-ip> REMOTE_EU=<dc-eu-private-ip> scripts/deploy-multi-region.sh deploy dc-east
+# DC-West host
+REMOTE_EAST=<dc-east-private-ip> REMOTE_EU=<dc-eu-private-ip> scripts/deploy-multi-region.sh deploy dc-west
+# DC-EU host
+REMOTE_EAST=<dc-east-private-ip> REMOTE_WEST=<dc-west-private-ip> scripts/deploy-multi-region.sh deploy dc-eu
+```
+
+To push config edits later without redeploying:
+
+```bash
+cd automation/ansible
+ansible-galaxy collection install -r requirements.yml
+ansible-playbook -i inventory-multi-region.yml playbooks/deploy-configs.yml -l dc_east
 ```
 
 ### Phase 3C: Verify Cross-Region BGP
 
 ```bash
 # Check WAN edge BGP sessions (should show 4 neighbors: 2 spines + 2 remote wan-edges)
-docker exec clab-netlab-wan-east vtysh -c "show ip bgp summary"
+docker exec wan-east vtysh -c "show ip bgp summary"
 
 # Verify remote routes learned:
-docker exec clab-netlab-wan-east vtysh -c "show ip bgp" | grep "10.11.0.0/16\|10.12.0.0/16"
+docker exec wan-east vtysh -c "show ip bgp" | grep "10.11.0.0/16\|10.12.0.0/16"
 
 # Verify remote routes propagated to fabric:
-docker exec clab-netlab-spine1 vtysh -c "show ip bgp" | grep "10.11.0.0/16\|10.12.0.0/16"
+docker exec dc-east-spine1 vtysh -c "show ip bgp" | grep "10.11.0.0/16\|10.12.0.0/16"
 
 # End-to-end connectivity across regions:
-docker exec clab-netlab-host-a ping -c 3 10.11.1.1   # DC-East → DC-West
-docker exec clab-netlab-host-a ping -c 3 10.12.1.1   # DC-East → DC-EU
-docker exec clab-netlab-host-a traceroute 10.11.1.1  # Show path
+docker exec dc-east-host-a ping -c 3 10.11.1.1   # DC-East → DC-West
+docker exec dc-east-host-a ping -c 3 10.12.1.1   # DC-East → DC-EU
+docker exec dc-east-host-a traceroute 10.11.1.1  # Show path
 ```
 
 ### Phase 3D: Verify Resilience / Failover
 
 ```bash
 # Shut down the East↔West tunnel, verify traffic reroutes through EU:
-docker exec clab-netlab-wan-east vtysh -c "configure terminal" -c "interface tun-west" -c "shutdown"
+docker exec wan-east vtysh -c "configure terminal" -c "interface tun-west" -c "shutdown"
 
 # Trace should show hop through wan-eu:
-docker exec clab-netlab-host-a traceroute 10.11.1.1
+docker exec dc-east-host-a traceroute 10.11.1.1
 
 # Restore:
-docker exec clab-netlab-wan-east vtysh -c "configure terminal" -c "interface tun-west" -c "no shutdown"
+docker exec wan-east vtysh -c "configure terminal" -c "interface tun-west" -c "no shutdown"
 ```
 
 ---
@@ -368,9 +389,11 @@ docker exec clab-netlab-wan-east vtysh -c "configure terminal" -c "interface tun
 ## Teardown
 
 ```bash
-# Destroy Containerlab on each host (SSH to each first):
-containerlab destroy -t topology.clab.yml --cleanup
-cd monitoring && docker compose down
+# On each lab host (dc-east | dc-west | dc-eu):
+scripts/deploy-multi-region.sh destroy dc-east
+
+# Cheaper than terminating while you still need the lab: stop the instances
+aws ec2 stop-instances --instance-ids <east-id> --region us-east-1
 
 # Terminate EC2 instances in each region
 aws ec2 terminate-instances --instance-ids <east-id> --region us-east-1

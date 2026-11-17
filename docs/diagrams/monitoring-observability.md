@@ -1,45 +1,57 @@
 # Monitoring and Observability
 
-The monitoring stack runs on each region's EC2 lab host, started from `monitoring/docker-compose.yml`. Every container joins two Docker networks: the services network (`10.20.0.0/24` in DC-East; `10.21.0.0/24` and `10.22.0.0/24` in the other regions per `scripts/deploy-multi-region.sh`) and the management network (`10.255.255.0/24`), which reaches the FRR routers.
+Each region's EC2 lab host runs its own monitoring stack from `monitoring/docker-compose.yml`, configured by `monitoring/env/<region>.env`. Only Prometheus and Grafana start by default. SuzieQ, Batfish, and dnsmasq are opt-in compose profiles, so they use no resources unless enabled.
+
+Every monitoring container joins two Docker networks: the region's services network (created by compose) and the region's Containerlab management network (created by `containerlab deploy`).
+
+| Region | Mgmt network | Services network | Prometheus | Grafana |
+|--------|--------------|------------------|------------|---------|
+| dc-east | `clab-netlab-east-mgmt` 10.255.255.0/24 | `rc-dc-east-services` 10.20.0.0/24 | 127.0.0.1:9090 | 127.0.0.1:3000 |
+| dc-west | `clab-netlab-west-mgmt` 10.254.255.0/24 | `rc-dc-west-services` 10.21.0.0/24 | 127.0.0.1:9091 | 127.0.0.1:3001 |
+| dc-eu | `clab-netlab-eu-mgmt` 10.253.255.0/24 | `rc-dc-eu-services` 10.22.0.0/24 | 127.0.0.1:9092 | 127.0.0.1:3002 |
 
 ## Components and Data Flow
 
 ```mermaid
 flowchart LR
-    subgraph FABRIC["Containerlab fabric (mgmt 10.255.255.0/24)"]
-        SP["spine1 / spine2<br/>.11 / .12"]
-        LF["leaf1–leaf4<br/>.21–.24"]
-        WAN["wan-edge<br/>.50"]
+    subgraph FABRIC["Containerlab fabric — mgmt 10.x.255.0/24"]
+        SP["&lt;region&gt;-spine1/2<br/>.11 / .12"]
+        LF["&lt;region&gt;-leaf1..4<br/>.21–.24"]
+        WAN["wan-&lt;region&gt;<br/>.50"]
+        EXP["frr_exporter :9342<br/>(in every FRR node)"]
+        SP --- EXP
+        LF --- EXP
+        WAN --- EXP
     end
 
-    subgraph STACK["Monitoring stack (docker compose)"]
-        GNMIC["gNMIc<br/>10.20.0.14 · :9804"]
-        PROM["Prometheus<br/>10.20.0.10 · :9090<br/>15 s scrape · 30 d retention"]
-        SUZ["Suzieq<br/>10.20.0.12 · :8000<br/>60 s poll"]
-        GRAF["Grafana<br/>10.20.0.11 · :3000"]
-        BAT["Batfish<br/>10.20.0.13 · :9996 / :9000"]
-        DNS["dnsmasq<br/>10.20.0.15 · :53<br/>zone netlab.local"]
+    subgraph DEFAULT["Default stack"]
+        PROM["rc-&lt;region&gt;-prometheus<br/>mgmt .41 · 15 s scrape · 7 d retention"]
+        GRAF["rc-&lt;region&gt;-grafana<br/>mgmt .42"]
     end
 
-    CFG[("configs/frr/*<br/>snapshot copied to<br/>monitoring/batfish/networks/")]
-    USER["Operator<br/>(via SSH tunnel)"]
+    subgraph OPTIONAL["Optional profiles"]
+        SUZ["rc-&lt;region&gt;-suzieq<br/>--profile suzieq · mgmt .43"]
+        BAT["rc-&lt;region&gt;-batfish<br/>--profile batfish"]
+        DNS["rc-&lt;region&gt;-dnsmasq<br/>--profile dns · mgmt .46"]
+    end
 
-    SP -. "gNMI :57400<br/>(targets commented out)" .-> GNMIC
-    LF -. "gNMI :57400<br/>(targets commented out)" .-> GNMIC
-    GNMIC -->|"/metrics every 10 s"| PROM
-    SP -->|"SSH as root"| SUZ
-    LF -->|"SSH as root"| SUZ
-    PROM -->|"datasource (default)"| GRAF
-    SUZ -->|"datasource :8000"| GRAF
+    TGT[("prometheus/targets/&lt;region&gt;.yml<br/>7 FRR nodes")]
+    CFG[("configs/frr/*<br/>snapshot copy")]
+    USER["Operator<br/>(SSH tunnel to 127.0.0.1)"]
+
+    TGT -->|"file_sd"| PROM
+    EXP -->|"HTTP /metrics"| PROM
+    PROM -->|"datasource"| GRAF
+    FABRIC -.->|"SSH (needs sshd added)"| SUZ
     CFG -->|"offline analysis"| BAT
+    DNS -.->|"*.lab.internal names"| FABRIC
     USER --> GRAF
-    USER --> SUZ
+    USER --> PROM
     USER --> BAT
-    DNS -.->|"name resolution<br/>upstream 8.8.8.8 / 1.1.1.1"| FABRIC
 
-    style GNMIC fill:#f0ad4e,color:#fff
     style PROM fill:#d9534f,color:#fff
     style GRAF fill:#e27d3a,color:#fff
+    style EXP fill:#f0ad4e,color:#fff
     style SUZ fill:#4a90d9,color:#fff
     style BAT fill:#5cb85c,color:#fff
     style DNS fill:#9d9d9d,color:#fff
@@ -47,52 +59,48 @@ flowchart LR
 
 ## What Each Tool Collects
 
-| Tool | Source | Method | Data | Interval |
-|------|--------|--------|------|----------|
-| gNMIc | spines, leaves | gNMI subscribe (`json_ietf`) | Interface counters, BGP neighbor session state | 10 s |
-| Prometheus | gNMIc, Grafana, itself | HTTP scrape | Time-series metrics | 15 s (gNMIc: 10 s) |
-| Suzieq | spines, leaves | SSH, `devtype: linux` | interfaces, bgp, ospf, routes, address, lldp, arpnd, vlan, mlag | 60 s |
-| Batfish | Copied `frr.conf` snapshots | Offline config parsing | Routing loops, ACL conflicts, reachability | On demand |
-| Grafana | Prometheus, Suzieq | Datasource queries | Dashboards | On view |
-| dnsmasq | `monitoring/dnsmasq/hosts` | Static hosts file | `*.netlab.local` names | — |
+| Tool | Default | Source | Method | Data |
+|------|---------|--------|--------|------|
+| frr_exporter | if `bin/frr_exporter` exists | FRR daemon sockets | Runs inside each FRR node | BGP peer state/prefixes, OSPF neighbors, BFD peer state, route counts |
+| Prometheus | on | frr_exporter, Grafana, itself | HTTP scrape every 15 s | Time series, labelled `device`, `role`, `region` |
+| Grafana | on | Prometheus | Datasource queries | Dashboards (FRR BGP dashboard: grafana.com ID 22943) |
+| SuzieQ | `--profile suzieq` | FRR nodes | SSH every poll | interfaces, BGP, OSPF, routes, LLDP |
+| Batfish | `--profile batfish` | Snapshot of `frr.conf` files | Offline parsing via pybatfish | Init issues, BGP session compatibility, reachability |
+| dnsmasq | `--profile dns` | `dnsmasq/hosts.<region>` | Static hosts | `dc-east-spine1.lab.internal`, ... |
 
-## Telemetry Pipeline
+## Metrics Pipeline
 
 ```mermaid
 sequenceDiagram
-    participant R as FRR router
-    participant G as gNMIc
-    participant P as Prometheus
-    participant GF as Grafana
+    participant D as FRR daemons (bgpd, ospfd, bfdd, zebra)
+    participant X as frr_exporter (same container, :9342)
+    participant P as rc-<region>-prometheus
+    participant G as rc-<region>-grafana
 
-    G->>R: Subscribe /interfaces/.../counters, /bgp/neighbors/.../session-state
-    loop every 10 s
-        R-->>G: Sample update
+    Note over X: Started by the topology exec step<br/>when bin/frr_exporter is present
+    loop every 15 s
+        P->>X: GET http://<mgmt-ip>:9342/metrics
+        X->>D: show ... json over Unix sockets
+        D-->>X: JSON
+        X-->>P: frr_bgp_peer_state, frr_ospf_neighbors, frr_bfd_peer_state, ...
     end
-    Note over G: Rename paths to short metric names<br/>(e.g. counters → in-octets, bgp → routing)
-    loop every 10 s
-        P->>G: GET :9804/metrics
-    end
-    GF->>P: PromQL query
-    P-->>GF: Series for dashboard
+    G->>P: PromQL
+    P-->>G: Series per device
 ```
 
 ## Batfish Validation Workflow
 
 ```mermaid
 flowchart LR
-    EDIT["Edit configs/frr/&lt;node&gt;/frr.conf"] --> COPY["Copy to<br/>monitoring/batfish/networks/current/&lt;node&gt;/"]
-    COPY --> SNAP["POST :9996/v2/set/snapshot/new-snapshot<br/>network: netlab"]
-    SNAP --> CHECK{"Issues found?"}
+    EDIT["Edit configs/frr/&lt;device&gt;/frr.conf"] --> COPY["Copy to monitoring/batfish/snapshots/&lt;region&gt;/configs/&lt;device&gt;.cfg"]
+    COPY --> RUN["--profile batfish up -d<br/>pybatfish init_snapshot()"]
+    RUN --> CHECK{"Issues found?"}
     CHECK -->|"Yes"| EDIT
-    CHECK -->|"No"| DEPLOY["Deploy with Ansible<br/>(see automation-workflow.md)"]
+    CHECK -->|"No"| DEPLOY["ansible-playbook ... -l &lt;region&gt;<br/>(see automation-workflow.md)"]
 ```
 
-## Current Gaps
+## Known Limits
 
-These are documented here so the diagrams match the config files as they stand.
-
-- **No router telemetry yet.** All gNMIc targets in `monitoring/gnmic/gnmic.yml` are commented out because the FRR gNMI server is not enabled. Until it is, Prometheus only scrapes gNMIc, Grafana, and itself.
-- **WAN edge not polled.** Suzieq's device list covers spines and leaves but not the wan-edge router.
-- **Per-region config.** The Suzieq and gNMIc files list DC-East management IPs. The other regions reuse the same management range inside their own Docker networks, so the same files apply on each host.
-- **Default credentials.** Grafana and gNMIc use `admin`/`admin`.
+- **Metrics need the binary.** If `scripts/fetch-frr-exporter.sh` was not run before `containerlab deploy`, the routers run normally and the Prometheus `frr` targets show as down.
+- **SuzieQ needs SSH.** The FRR image has no SSH server. The steps to add one are in `monitoring/README.md`.
+- **Default credentials.** Grafana is `admin`/`admin` unless `GRAFANA_ADMIN_PASSWORD` is exported first. All ports bind to 127.0.0.1 only.

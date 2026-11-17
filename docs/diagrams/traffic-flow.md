@@ -14,15 +14,15 @@ flowchart TB
 
     STEP3["3. spine1 → wan-east<br/>Underlay /31 link<br/>(OSPF route to wan-east loopback)"]
 
-    STEP4["4. wan-east → GRE tunnel<br/>tun-west: 10.110.0.1/30<br/>Encapsulates in GRE<br/>Src: EC2-East VPC IP<br/>Dst: EC2-West VPC IP"]
+    STEP4["4. wan-east → GRE tunnel<br/>tun-west: 10.110.0.1/30<br/>Encapsulates in GRE<br/>Src: wan-east mgmt IP → NAT to EC2-East VPC IP<br/>Dst: EC2-West VPC IP"]
 
     STEP5["5. GRE packet traverses<br/>VPC Peering connection<br/>10.0.0.0/16 → 10.1.0.0/16<br/>(AWS backbone)"]
 
-    STEP6["6. wan-west receives GRE<br/>Decapsulates<br/>tun-west: 10.110.0.2/30"]
+    STEP6["6. EC2-West DNATs GRE to wan-west<br/>Decapsulates on<br/>tun-east: 10.110.0.2/30"]
 
     STEP7["7. wan-west → spine1/spine2<br/>Has route to 10.11.1.0/24<br/>(learned from local leaf via BGP)"]
 
-    STEP8["8. spine → leaf1 (DC-West)<br/>Route reflected to leaf1<br/>(has 10.11.1.0/24)"]
+    STEP8["8. spine → leaf1 (DC-West)<br/>Re-advertised over eBGP<br/>(has 10.11.1.0/24)"]
 
     STEP9["9. leaf1 → host-a (DC-West)<br/>10.11.1.1<br/>(directly connected)"]
 
@@ -49,7 +49,7 @@ flowchart TB
 flowchart LR
     subgraph "DC-East"
         EA["leaf1<br/>networks 10.10.1.0/24"]
-        EB["spine1/spine2<br/>RR reflects to<br/>wan-east + all leaves"]
+        EB["spine1/spine2<br/>re-advertises (eBGP) to<br/>wan-east + all leaves"]
         EC["wan-east<br/>aggregates to<br/>10.10.0.0/16"]
     end
 
@@ -60,13 +60,13 @@ flowchart LR
 
     subgraph "DC-West"
         WF["wan-west<br/>receives 10.10.0.0/16<br/>injects to spines"]
-        WG["spine1/spine2<br/>RR reflects to<br/>all leaves"]
+        WG["spine1/spine2<br/>re-advertises (eBGP) to<br/>all leaves"]
         WH["leaf1-4<br/>install route<br/>10.10.0.0/16 via spine"]
     end
 
     subgraph "DC-EU"
         WI["wan-eu<br/>receives 10.10.0.0/16<br/>injects to spines"]
-        WJ["spine1/spine2<br/>RR reflects to<br/>all leaves"]
+        WJ["spine1/spine2<br/>re-advertises (eBGP) to<br/>all leaves"]
         WK["leaf1-4<br/>install route<br/>10.10.0.0/16 via spine"]
     end
 

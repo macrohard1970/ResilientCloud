@@ -26,8 +26,8 @@ flowchart TB
 
     NET -->|"SSH :22<br/>public SG"| BAS
     BAS -->|"SSH :22<br/>private SG (source: public SG)"| EC2
-    PEER <-->|"All traffic<br/>from peer VPC CIDRs<br/>(GRE carrying BGP + data)"| EC2
-    EC2 -->|"published ports<br/>3000 · 9090 · 8000 · 9996 · 9000 · 9804 · 53"| MON
+    PEER <-->|"GRE (IP proto 47)<br/>from peer VPC CIDRs<br/>DNAT to wan-edge by gre-nat.sh"| EC2
+    EC2 -->|"127.0.0.1 only<br/>Grafana 300x · Prometheus 909x · Batfish (opt.)"| MON
 
     style NET fill:#d9534f,color:#fff
     style BAS fill:#f0ad4e,color:#fff
@@ -89,9 +89,9 @@ graph LR
 | Item | Where it lives | In repo? |
 |------|----------------|----------|
 | EC2 SSH key pair | `~/.ssh/networking-lab*.pem` on the operator machine | No (`*.pem` in `.gitignore`) |
-| Grafana admin | `monitoring/docker-compose.yml` | Yes, default `admin`/`admin` |
-| gNMIc router login | `monitoring/gnmic/gnmic.yml` | Yes, default `admin`/`admin` |
-| Ansible / Suzieq SSH to routers | `root`, key-based inside Docker | No credentials stored |
+| Grafana admin | `GRAFANA_ADMIN_PASSWORD` env var | No (falls back to lab default `admin`) |
+| Ansible to routers | `docker exec` on the lab host | No credentials needed |
+| SuzieQ SSH key (optional) | `monitoring/suzieq/ssh/` | No (git-ignored) |
 
 ## Hardening Notes (lab vs. production)
 
@@ -99,5 +99,5 @@ These choices fit a lab and should change for anything longer-lived:
 
 - Restrict the bastion's SSH rule from `0.0.0.0/0` to your own IP, or replace the bastion with AWS Systems Manager Session Manager.
 - Narrow the cross-region rule from "all traffic" to GRE (IP protocol 47) between the lab hosts' private IPs.
-- Change the Grafana and gNMIc defaults, and move them to environment variables or AWS Secrets Manager.
+- Set `GRAFANA_ADMIN_PASSWORD` (or pull it from AWS Secrets Manager) instead of the `admin` default.
 - GRE is unencrypted. Traffic stays on the AWS backbone over VPC peering, but add IPsec if confidentiality between regions matters.

@@ -21,15 +21,15 @@ Three datacenters across AWS regions, each running an independent Containerlab s
 | VPC CIDR | 10.0.0.0/16 | 10.1.0.0/16 | 10.2.0.0/16 | AWS VPC supernet |
 | Public subnet | 10.0.1.0/24 | 10.1.1.0/24 | 10.2.1.0/24 | EC2 with public IP (SSH/bastion) |
 | Private subnet | 10.0.2.0/24 | 10.1.2.0/24 | 10.2.2.0/24 | EC2 without public IP |
-| WAN subnet | 10.0.3.0/28 | 10.1.3.0/28 | 10.2.3.0/28 | WAN edge ENI / tunnel endpoints |
+| WAN subnet | 10.0.3.0/28 | 10.1.3.0/28 | 10.2.3.0/28 | Reserved (GRE uses the lab host primary IP) |
 
 ### Containerlab Internal Level (Docker-isolated per host)
 
 | Network | DC-East | DC-West | DC-EU | Purpose |
 |---------|---------|---------|-------|---------|
 | Host subnets | 10.10.0.0/16 | 10.11.0.0/16 | 10.12.0.0/16 | Endpoint /24s per leaf (advertised via BGP) |
-| Loopbacks | 10.255.0.0/24 | 10.254.0.0/24 | 10.253.0.0/24 | Router IDs /32 (advertised via BGP) |
-| Underlay P2P | 10.0.0.0/24 | 10.100.0.0/24 | 10.200.0.0/24 | Spine-leaf /31 links (Docker-internal, not advertised) |
+| Loopbacks | 10.255.0.0/24 | 10.254.0.0/24 | 10.253.0.0/24 | Router IDs /32 (inside the region only) |
+| Underlay P2P | 10.99.0.0/24 | 10.100.0.0/24 | 10.200.0.0/24 | Spine-leaf /31 links (Docker-internal, not advertised) |
 | Management | 10.255.255.0/24 | 10.254.255.0/24 | 10.253.255.0/24 | Containerlab OOB mgmt (Docker-internal) |
 | Services | 10.20.0.0/24 | 10.21.0.0/24 | 10.22.0.0/24 | Monitoring containers (Docker-internal) |
 
@@ -37,7 +37,7 @@ Three datacenters across AWS regions, each running an independent Containerlab s
 
 | Network | Subnet | Purpose |
 |---------|--------|---------|
-| WAN tunnel mesh | 10.100.0.0/24 | /30 per inter-region tunnel (3 links for full mesh) |
+| WAN tunnel mesh | 10.110.0.0/24 | /30 per inter-region tunnel (3 links for full mesh) |
 
 ---
 
@@ -51,7 +51,7 @@ Each region gets a dedicated VPC with public, private, and WAN subnets. The VPC 
 |--------|------|----|---------|
 | Public | 10.0.1.0/24 | us-east-1a | Bastion/jump host with public IP |
 | Private | 10.0.2.0/24 | us-east-1b | Containerlab EC2 instance |
-| WAN | 10.0.3.0/28 | us-east-1a | Secondary ENI for WAN edge tunnel |
+| WAN | 10.0.3.0/28 | us-east-1a | Reserved; GRE runs from the lab host primary IP |
 
 VPC ID: `vpc-0287cc4e662371bcb` (existing)
 IGW: `igw-0fcd99507b2227246` (existing)
@@ -62,7 +62,7 @@ IGW: `igw-0fcd99507b2227246` (existing)
 |--------|------|----|---------|
 | Public | 10.1.1.0/24 | us-west-2a | Bastion/jump host with public IP |
 | Private | 10.1.2.0/24 | us-west-2b | Containerlab EC2 instance |
-| WAN | 10.1.3.0/28 | us-west-2a | Secondary ENI for WAN edge tunnel |
+| WAN | 10.1.3.0/28 | us-west-2a | Reserved; GRE runs from the lab host primary IP |
 
 ### VPC — DC-EU (eu-west-1)
 
@@ -70,7 +70,7 @@ IGW: `igw-0fcd99507b2227246` (existing)
 |--------|------|----|---------|
 | Public | 10.2.1.0/24 | eu-west-1a | Bastion/jump host with public IP |
 | Private | 10.2.2.0/24 | eu-west-1b | Containerlab EC2 instance |
-| WAN | 10.2.3.0/28 | eu-west-1a | Secondary ENI for WAN edge tunnel |
+| WAN | 10.2.3.0/28 | eu-west-1a | Reserved; GRE runs from the lab host primary IP |
 
 ---
 
@@ -115,42 +115,42 @@ Remaining: 10.12.5.0/24 – 10.12.255.0/24
 
 ## 3. Loopback Addresses — BGP-Advertised Per Region
 
-Each router gets a /32 loopback used as OSPF Router ID and BGP update-source. These are unique per region and advertised via BGP for reachability.
+Each router gets a /32 loopback used as OSPF Router ID and BGP update-source. They are unique across all regions. Inside a region they are reachable through OSPF and BGP; only the WAN edge loopbacks are reached across regions, through static routes over the GRE tunnels.
 
-### DC-East — 10.255.0.0/24 (existing, unchanged)
+### DC-East — 10.255.0.0/24
 
 | Device | Loopback | ASN | Role |
 |--------|----------|-----|------|
-| spine1 | 10.255.0.1/32 | 65001 | Spine (route reflector) |
-| spine2 | 10.255.0.2/32 | 65001 | Spine (route reflector) |
-| leaf1 | 10.255.0.11/32 | 65101 | Leaf |
-| leaf2 | 10.255.0.12/32 | 65102 | Leaf |
-| leaf3 | 10.255.0.13/32 | 65103 | Leaf |
-| leaf4 | 10.255.0.14/32 | 65104 | Leaf |
+| dc-east-spine1 | 10.255.0.1/32 | 65001 | Spine |
+| dc-east-spine2 | 10.255.0.2/32 | 65001 | Spine |
+| dc-east-leaf1 | 10.255.0.11/32 | 65101 | Leaf |
+| dc-east-leaf2 | 10.255.0.12/32 | 65102 | Leaf |
+| dc-east-leaf3 | 10.255.0.13/32 | 65103 | Leaf |
+| dc-east-leaf4 | 10.255.0.14/32 | 65104 | Leaf |
 | wan-east | 10.255.0.100/32 | 65010 | WAN edge (new) |
 
 ### DC-West — 10.254.0.0/24
 
 | Device | Loopback | ASN | Role |
 |--------|----------|-----|------|
-| spine1 | 10.254.0.1/32 | 65001 | Spine (route reflector) |
-| spine2 | 10.254.0.2/32 | 65001 | Spine (route reflector) |
-| leaf1 | 10.254.0.11/32 | 65101 | Leaf |
-| leaf2 | 10.254.0.12/32 | 65102 | Leaf |
-| leaf3 | 10.254.0.13/32 | 65103 | Leaf |
-| leaf4 | 10.254.0.14/32 | 65104 | Leaf |
+| dc-west-spine1 | 10.254.0.1/32 | 65001 | Spine |
+| dc-west-spine2 | 10.254.0.2/32 | 65001 | Spine |
+| dc-west-leaf1 | 10.254.0.11/32 | 65101 | Leaf |
+| dc-west-leaf2 | 10.254.0.12/32 | 65102 | Leaf |
+| dc-west-leaf3 | 10.254.0.13/32 | 65103 | Leaf |
+| dc-west-leaf4 | 10.254.0.14/32 | 65104 | Leaf |
 | wan-west | 10.254.0.100/32 | 65020 | WAN edge |
 
 ### DC-EU — 10.253.0.0/24
 
 | Device | Loopback | ASN | Role |
 |--------|----------|-----|------|
-| spine1 | 10.253.0.1/32 | 65001 | Spine (route reflector) |
-| spine2 | 10.253.0.2/32 | 65001 | Spine (route reflector) |
-| leaf1 | 10.253.0.11/32 | 65101 | Leaf |
-| leaf2 | 10.253.0.12/32 | 65102 | Leaf |
-| leaf3 | 10.253.0.13/32 | 65103 | Leaf |
-| leaf4 | 10.253.0.14/32 | 65104 | Leaf |
+| dc-eu-spine1 | 10.253.0.1/32 | 65001 | Spine |
+| dc-eu-spine2 | 10.253.0.2/32 | 65001 | Spine |
+| dc-eu-leaf1 | 10.253.0.11/32 | 65101 | Leaf |
+| dc-eu-leaf2 | 10.253.0.12/32 | 65102 | Leaf |
+| dc-eu-leaf3 | 10.253.0.13/32 | 65103 | Leaf |
+| dc-eu-leaf4 | 10.253.0.14/32 | 65104 | Leaf |
 | wan-eu | 10.253.0.100/32 | 65030 | WAN edge |
 
 > **Note:** The internal fabric ASNs (65001, 65101–65104) are reused across regions. This is safe because each region's fabric is Docker-isolated — the ASNs never interact outside their host. Only the WAN edge ASNs (65010, 65020, 65030) are unique and visible across regions.
@@ -159,23 +159,25 @@ Each router gets a /32 loopback used as OSPF Router ID and BGP update-source. Th
 
 ## 4. Underlay P2P Links (Docker-Internal)
 
-Each region's spine-leaf underlay uses /31 point-to-point links. These are inside Docker network namespaces and never advertised externally, so they could theoretically be reused. Unique ranges are assigned for operational clarity.
+Each region's spine-leaf underlay uses /31 point-to-point links. They are not advertised outside the region. Every range is unique and none falls inside a VPC CIDR.
 
-### DC-East — 10.0.0.0/24 (existing, unchanged)
+### DC-East — 10.99.0.0/24
+
+Moved from 10.0.0.0/24, which sat inside the DC-East VPC CIDR (10.0.0.0/16) and would have shadowed VPC addresses on the lab host.
 
 | Link | Spine side | Leaf side | Subnet |
 |------|-----------|-----------|--------|
-| spine1 ↔ leaf1 | 10.0.0.0/31 | 10.0.0.1/31 | 10.0.0.0/31 |
-| spine1 ↔ leaf2 | 10.0.0.2/31 | 10.0.0.3/31 | 10.0.0.2/31 |
-| spine1 ↔ leaf3 | 10.0.0.4/31 | 10.0.0.5/31 | 10.0.0.4/31 |
-| spine1 ↔ leaf4 | 10.0.0.6/31 | 10.0.0.7/31 | 10.0.0.6/31 |
-| spine2 ↔ leaf1 | 10.0.0.8/31 | 10.0.0.9/31 | 10.0.0.8/31 |
-| spine2 ↔ leaf2 | 10.0.0.10/31 | 10.0.0.11/31 | 10.0.0.10/31 |
-| spine2 ↔ leaf3 | 10.0.0.12/31 | 10.0.0.13/31 | 10.0.0.12/31 |
-| spine2 ↔ leaf4 | 10.0.0.14/31 | 10.0.0.15/31 | 10.0.0.14/31 |
-| spine1 ↔ spine2 | 10.0.0.16/31 | 10.0.0.17/31 | 10.0.0.16/31 |
-| spine1 ↔ wan-east | 10.0.0.18/31 | 10.0.0.19/31 | 10.0.0.18/31 |
-| spine2 ↔ wan-east | 10.0.0.20/31 | 10.0.0.21/31 | 10.0.0.20/31 |
+| dc-east-spine1 ↔ dc-east-leaf1 | 10.99.0.0/31 | 10.99.0.1/31 | 10.99.0.0/31 |
+| dc-east-spine1 ↔ dc-east-leaf2 | 10.99.0.2/31 | 10.99.0.3/31 | 10.99.0.2/31 |
+| dc-east-spine1 ↔ dc-east-leaf3 | 10.99.0.4/31 | 10.99.0.5/31 | 10.99.0.4/31 |
+| dc-east-spine1 ↔ dc-east-leaf4 | 10.99.0.6/31 | 10.99.0.7/31 | 10.99.0.6/31 |
+| dc-east-spine2 ↔ dc-east-leaf1 | 10.99.0.8/31 | 10.99.0.9/31 | 10.99.0.8/31 |
+| dc-east-spine2 ↔ dc-east-leaf2 | 10.99.0.10/31 | 10.99.0.11/31 | 10.99.0.10/31 |
+| dc-east-spine2 ↔ dc-east-leaf3 | 10.99.0.12/31 | 10.99.0.13/31 | 10.99.0.12/31 |
+| dc-east-spine2 ↔ dc-east-leaf4 | 10.99.0.14/31 | 10.99.0.15/31 | 10.99.0.14/31 |
+| dc-east-spine1 ↔ dc-east-spine2 | 10.99.0.16/31 | 10.99.0.17/31 | 10.99.0.16/31 |
+| dc-east-spine1 ↔ wan-east | 10.99.0.18/31 | 10.99.0.19/31 | 10.99.0.18/31 |
+| dc-east-spine2 ↔ wan-east | 10.99.0.20/31 | 10.99.0.21/31 | 10.99.0.20/31 |
 
 ### DC-West — 10.100.0.0/24
 
@@ -183,17 +185,17 @@ Same structure as DC-East, offset to 10.100.0.0/24.
 
 | Link | Subnet |
 |------|--------|
-| spine1 ↔ leaf1 | 10.100.0.0/31 |
-| spine1 ↔ leaf2 | 10.100.0.2/31 |
-| spine1 ↔ leaf3 | 10.100.0.4/31 |
-| spine1 ↔ leaf4 | 10.100.0.6/31 |
-| spine2 ↔ leaf1 | 10.100.0.8/31 |
-| spine2 ↔ leaf2 | 10.100.0.10/31 |
-| spine2 ↔ leaf3 | 10.100.0.12/31 |
-| spine2 ↔ leaf4 | 10.100.0.14/31 |
-| spine1 ↔ spine2 | 10.100.0.16/31 |
-| spine1 ↔ wan-west | 10.100.0.18/31 |
-| spine2 ↔ wan-west | 10.100.0.20/31 |
+| dc-west-spine1 ↔ dc-west-leaf1 | 10.100.0.0/31 |
+| dc-west-spine1 ↔ dc-west-leaf2 | 10.100.0.2/31 |
+| dc-west-spine1 ↔ dc-west-leaf3 | 10.100.0.4/31 |
+| dc-west-spine1 ↔ dc-west-leaf4 | 10.100.0.6/31 |
+| dc-west-spine2 ↔ dc-west-leaf1 | 10.100.0.8/31 |
+| dc-west-spine2 ↔ dc-west-leaf2 | 10.100.0.10/31 |
+| dc-west-spine2 ↔ dc-west-leaf3 | 10.100.0.12/31 |
+| dc-west-spine2 ↔ dc-west-leaf4 | 10.100.0.14/31 |
+| dc-west-spine1 ↔ dc-west-spine2 | 10.100.0.16/31 |
+| dc-west-spine1 ↔ wan-west | 10.100.0.18/31 |
+| dc-west-spine2 ↔ wan-west | 10.100.0.20/31 |
 
 ### DC-EU — 10.200.0.0/24
 
@@ -201,21 +203,21 @@ Same structure, offset to 10.200.0.0/24.
 
 | Link | Subnet |
 |------|--------|
-| spine1 ↔ leaf1 | 10.200.0.0/31 |
-| spine1 ↔ leaf2 | 10.200.0.2/31 |
-| spine1 ↔ leaf3 | 10.200.0.4/31 |
-| spine1 ↔ leaf4 | 10.200.0.6/31 |
-| spine2 ↔ leaf1 | 10.200.0.8/31 |
-| spine2 ↔ leaf2 | 10.200.0.10/31 |
-| spine2 ↔ leaf3 | 10.200.0.12/31 |
-| spine2 ↔ leaf4 | 10.200.0.14/31 |
-| spine1 ↔ spine2 | 10.200.0.16/31 |
-| spine1 ↔ wan-eu | 10.200.0.18/31 |
-| spine2 ↔ wan-eu | 10.200.0.20/31 |
+| dc-eu-spine1 ↔ dc-eu-leaf1 | 10.200.0.0/31 |
+| dc-eu-spine1 ↔ dc-eu-leaf2 | 10.200.0.2/31 |
+| dc-eu-spine1 ↔ dc-eu-leaf3 | 10.200.0.4/31 |
+| dc-eu-spine1 ↔ dc-eu-leaf4 | 10.200.0.6/31 |
+| dc-eu-spine2 ↔ dc-eu-leaf1 | 10.200.0.8/31 |
+| dc-eu-spine2 ↔ dc-eu-leaf2 | 10.200.0.10/31 |
+| dc-eu-spine2 ↔ dc-eu-leaf3 | 10.200.0.12/31 |
+| dc-eu-spine2 ↔ dc-eu-leaf4 | 10.200.0.14/31 |
+| dc-eu-spine1 ↔ dc-eu-spine2 | 10.200.0.16/31 |
+| dc-eu-spine1 ↔ wan-eu | 10.200.0.18/31 |
+| dc-eu-spine2 ↔ wan-eu | 10.200.0.20/31 |
 
 ---
 
-## 5. WAN Tunnel Mesh — 10.100.0.0/24 (Inter-Region)
+## 5. WAN Tunnel Mesh — 10.110.0.0/24 (Inter-Region)
 
 GRE tunnels carry BGP between WAN edge routers across VPC peering connections. Each tunnel is a /30.
 
@@ -231,9 +233,9 @@ GRE tunnels carry BGP between WAN edge routers across VPC peering connections. E
 
 | WAN Edge | To East | To West | To EU |
 |----------|---------|---------|-------|
-| wan-east (DC-East) | — | tun-w: 10.110.0.1/30 | tun-e: 10.110.0.5/30 |
-| wan-west (DC-West) | tun-e: 10.110.0.2/30 | — | tun-e: 10.110.0.9/30 |
-| wan-eu (DC-EU) | tun-e: 10.110.0.6/30 | tun-w: 10.110.0.10/30 | — |
+| wan-east (DC-East) | — | tun-west: 10.110.0.1/30 | tun-eu: 10.110.0.5/30 |
+| wan-west (DC-West) | tun-east: 10.110.0.2/30 | — | tun-eu: 10.110.0.9/30 |
+| wan-eu (DC-EU) | tun-east: 10.110.0.6/30 | tun-west: 10.110.0.10/30 | — |
 
 ---
 
@@ -243,7 +245,7 @@ GRE tunnels carry BGP between WAN edge routers across VPC peering connections. E
 
 | ASN | Devices | Type | Purpose |
 |-----|---------|------|---------|
-| 65001 | spine1, spine2 | iBGP | Spine fabric, route reflectors |
+| 65001 | spine1, spine2 | iBGP | Spine fabric (eBGP to leaves) |
 | 65101 | leaf1 | eBGP | Connects to spines, advertises host /24 |
 | 65102 | leaf2 | eBGP | Connects to spines, advertises host /24 |
 | 65103 | leaf3 | eBGP | Connects to spines, advertises host /24 |
@@ -278,7 +280,7 @@ These ASNs are reused in all three regions. Safe because each fabric is isolated
     └─────────────┘           eBGP (65010 ↔ 65030)
 ```
 
-Each WAN edge router also peers eBGP with its local spines (AS 65001), acting as a route-reflector client. This injects remote routes into the local fabric and advertises local host subnets to remote regions.
+Each WAN edge router also peers eBGP with its local spines (AS 65001). This injects remote routes into the local fabric and advertises local host subnets to remote regions.
 
 ---
 
@@ -288,10 +290,12 @@ These networks exist only inside each EC2 host's Docker. They are not routable a
 
 | Network | DC-East | DC-West | DC-EU | Purpose |
 |---------|---------|---------|-------|---------|
-| Management | 10.255.255.0/24 | 10.254.255.0/24 | 10.253.255.0/24 | Containerlab OOB (SSH, Ansible, gNMI) |
+| Management | 10.255.255.0/24 | 10.254.255.0/24 | 10.253.255.0/24 | Containerlab OOB (docker exec/Ansible, frr_exporter :9342) |
 | Services | 10.20.0.0/24 | 10.21.0.0/24 | 10.22.0.0/24 | Monitoring containers |
 
 ### Management IP Assignments (same pattern per region)
+
+Device names carry the region prefix: `dc-east-spine1`, `dc-west-host-c`, and so on. WAN edges are `wan-east`, `wan-west`, `wan-eu`; monitoring containers are `rc-<region>-prometheus` etc.
 
 | Device | DC-East | DC-West | DC-EU |
 |--------|---------|---------|-------|
@@ -310,7 +314,7 @@ These networks exist only inside each EC2 host's Docker. They are not routable a
 | grafana | .42 | .42 | .42 |
 | suzieq | .43 | .43 | .43 |
 | batfish | .44 | .44 | .44 |
-| gnmic | .45 | .45 | .45 |
+| (free, was gNMIc) | .45 | .45 | .45 |
 | dnsmasq | .46 | .46 | .46 |
 
 ---
@@ -327,15 +331,15 @@ CONTAINERLAB INTERNAL (Docker-isolated, BGP-advertised)
 ├── 10.10.0.0/16 ── DC-East host subnets (advertised)
 ├── 10.11.0.0/16 ── DC-West host subnets (advertised)
 ├── 10.12.0.0/16 ── DC-EU host subnets (advertised)
-├── 10.255.0.0/24 ── DC-East loopbacks (advertised)
-├── 10.254.0.0/24 ── DC-West loopbacks (advertised)
-└── 10.253.0.0/24 ── DC-EU loopbacks (advertised)
+├── 10.255.0.0/24 ── DC-East loopbacks (region-internal)
+├── 10.254.0.0/24 ── DC-West loopbacks (region-internal)
+└── 10.253.0.0/24 ── DC-EU loopbacks (region-internal)
 
 WAN INTERCONNECT (GRE tunnels over VPC peering)
 └── 10.110.0.0/24 ── Inter-region tunnel /30s
 
 DOCKER-INTERNAL (not advertised, unique per region for clarity)
-├── 10.0.0.0/24    ── DC-East underlay P2P
+├── 10.99.0.0/24    ── DC-East underlay P2P
 ├── 10.100.0.0/24  ── DC-West underlay P2P
 ├── 10.200.0.0/24  ── DC-EU underlay P2P
 ├── 10.255.255.0/24 ── DC-East mgmt

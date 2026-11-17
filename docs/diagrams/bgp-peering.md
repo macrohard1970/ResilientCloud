@@ -17,14 +17,14 @@ graph TB
 
         WE_E -->|"eBGP"| SP_E1
         WE_E -->|"eBGP"| SP_E2
-        SP_E1 -->|"eBGP<br/>RR client"| LF_E1
-        SP_E1 -->|"eBGP<br/>RR client"| LF_E2
-        SP_E1 -->|"eBGP<br/>RR client"| LF_E3
-        SP_E1 -->|"eBGP<br/>RR client"| LF_E4
-        SP_E2 -->|"eBGP<br/>RR client"| LF_E1
-        SP_E2 -->|"eBGP<br/>RR client"| LF_E2
-        SP_E2 -->|"eBGP<br/>RR client"| LF_E3
-        SP_E2 -->|"eBGP<br/>RR client"| LF_E4
+        SP_E1 -->|"eBGP"| LF_E1
+        SP_E1 -->|"eBGP"| LF_E2
+        SP_E1 -->|"eBGP"| LF_E3
+        SP_E1 -->|"eBGP"| LF_E4
+        SP_E2 -->|"eBGP"| LF_E1
+        SP_E2 -->|"eBGP"| LF_E2
+        SP_E2 -->|"eBGP"| LF_E3
+        SP_E2 -->|"eBGP"| LF_E4
         SP_E1 ===|"iBGP"| SP_E2
     end
 
@@ -39,14 +39,14 @@ graph TB
 
         WE_W -->|"eBGP"| SP_W1
         WE_W -->|"eBGP"| SP_W2
-        SP_W1 -->|"eBGP<br/>RR"| LF_W1
-        SP_W1 -->|"eBGP<br/>RR"| LF_W2
-        SP_W1 -->|"eBGP<br/>RR"| LF_W3
-        SP_W1 -->|"eBGP<br/>RR"| LF_W4
-        SP_W2 -->|"eBGP<br/>RR"| LF_W1
-        SP_W2 -->|"eBGP<br/>RR"| LF_W2
-        SP_W2 -->|"eBGP<br/>RR"| LF_W3
-        SP_W2 -->|"eBGP<br/>RR"| LF_W4
+        SP_W1 -->|"eBGP"| LF_W1
+        SP_W1 -->|"eBGP"| LF_W2
+        SP_W1 -->|"eBGP"| LF_W3
+        SP_W1 -->|"eBGP"| LF_W4
+        SP_W2 -->|"eBGP"| LF_W1
+        SP_W2 -->|"eBGP"| LF_W2
+        SP_W2 -->|"eBGP"| LF_W3
+        SP_W2 -->|"eBGP"| LF_W4
         SP_W1 ===|"iBGP"| SP_W2
     end
 
@@ -61,14 +61,14 @@ graph TB
 
         WE_EU -->|"eBGP"| SP_EU1
         WE_EU -->|"eBGP"| SP_EU2
-        SP_EU1 -->|"eBGP<br/>RR"| LF_EU1
-        SP_EU1 -->|"eBGP<br/>RR"| LF_EU2
-        SP_EU1 -->|"eBGP<br/>RR"| LF_EU3
-        SP_EU1 -->|"eBGP<br/>RR"| LF_EU4
-        SP_EU2 -->|"eBGP<br/>RR"| LF_EU1
-        SP_EU2 -->|"eBGP<br/>RR"| LF_EU2
-        SP_EU2 -->|"eBGP<br/>RR"| LF_EU3
-        SP_EU2 -->|"eBGP<br/>RR"| LF_EU4
+        SP_EU1 -->|"eBGP"| LF_EU1
+        SP_EU1 -->|"eBGP"| LF_EU2
+        SP_EU1 -->|"eBGP"| LF_EU3
+        SP_EU1 -->|"eBGP"| LF_EU4
+        SP_EU2 -->|"eBGP"| LF_EU1
+        SP_EU2 -->|"eBGP"| LF_EU2
+        SP_EU2 -->|"eBGP"| LF_EU3
+        SP_EU2 -->|"eBGP"| LF_EU4
         SP_EU1 ===|"iBGP"| SP_EU2
     end
 
@@ -93,14 +93,14 @@ graph TB
 graph LR
     WE_E["wan-east<br/>AS 65010<br/>DC-East"]
 
-    WE_E -->|"Advertises:<br/>10.10.0.0/16<br/>10.255.0.0/24"| WE_W["wan-west<br/>AS 65020<br/>DC-West"]
-    WE_E -->|"Advertises:<br/>10.10.0.0/16<br/>10.255.0.0/24"| WE_EU["wan-eu<br/>AS 65030<br/>DC-EU"]
+    WE_E -->|"Advertises:<br/>10.10.0.0/16<br/>(+ transit /16s)"| WE_W["wan-west<br/>AS 65020<br/>DC-West"]
+    WE_E -->|"Advertises:<br/>10.10.0.0/16<br/>(+ transit /16s)"| WE_EU["wan-eu<br/>AS 65030<br/>DC-EU"]
 
-    WE_W -->|"Advertises:<br/>10.11.0.0/16<br/>10.254.0.0/24"| WE_E
-    WE_W -->|"Advertises:<br/>10.11.0.0/16<br/>10.254.0.0/24"| WE_EU
+    WE_W -->|"Advertises:<br/>10.11.0.0/16<br/>(+ transit /16s)"| WE_E
+    WE_W -->|"Advertises:<br/>10.11.0.0/16<br/>(+ transit /16s)"| WE_EU
 
-    WE_EU -->|"Advertises:<br/>10.12.0.0/16<br/>10.253.0.0/24"| WE_E
-    WE_EU -->|"Advertises:<br/>10.12.0.0/16<br/>10.253.0.0/24"| WE_W
+    WE_EU -->|"Advertises:<br/>10.12.0.0/16<br/>(+ transit /16s)"| WE_E
+    WE_EU -->|"Advertises:<br/>10.12.0.0/16<br/>(+ transit /16s)"| WE_W
 
     style WE_E fill:#d9534f,color:#fff
     style WE_W fill:#d9534f,color:#fff
@@ -112,12 +112,12 @@ graph LR
 ```mermaid
 flowchart TB
     subgraph "What crosses the WAN (inter-region)"
-        OUT["WAN-OUT Prefix List<br/>Permit: local /16 aggregate<br/>Permit: local /24 loopback range<br/>Deny: everything else"]
-        IN["WAN-IN Prefix List<br/>Permit: remote /16 aggregates<br/>Permit: remote /24 loopback ranges<br/>Deny: everything else"]
+        OUT["route-map WAN-OUT<br/>Permit: own /16 aggregate<br/>Permit: remote /16s (transit)<br/>Deny: everything else"]
+        IN["route-map WAN-IN<br/>Permit: remote /16 aggregates<br/>Deny: everything else"]
     end
 
     subgraph "What stays in the local fabric"
-        LOCAL["Local Fabric Only:<br/>• Individual /24 host subnets<br/>• Underlay /31 P2P links<br/>• Management /24<br/>• Services /24"]
+        LOCAL["Local Fabric Only:<br/>• Individual /24 host subnets<br/>• Loopbacks<br/>• Underlay /31 P2P links<br/>• Management /24<br/>• Services /24"]
     end
 
     LEAF["Leaf advertises<br/>host /24 to spines"]
@@ -127,7 +127,7 @@ flowchart TB
 
     LEAF --> SPINE
     SPINE --> WAN
-    WAN -->|"WAN-OUT filter<br/>only /16 + /24 loopbacks"| REMOTE
+    WAN -->|"WAN-OUT<br/>/16 aggregates only"| REMOTE
     WAN --> LOCAL
 
     style OUT fill:#5cb85c,color:#fff
