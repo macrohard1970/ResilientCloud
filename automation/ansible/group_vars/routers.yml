@@ -1,19 +1,11 @@
 ---
-# Group vars for all routers (spines + leaves)
-# Applied to all nodes in the 'routers' group
-
+# Applies to every FRR node (spines, leaves, WAN edges) in both inventories.
+# Per-device configuration lives in configs/frr/<inventory_hostname>/.
 frr_config_dir: /etc/frr
-frr_daemons:
-  zebra: yes
-  bgpd: yes
-  ospfd: yes
-  bfdd: yes
-
-# OSPF settings
+frr_reload_cmd: /usr/lib/frr/frr-reload.py --reload /etc/frr/frr.conf
+frr_daemons: [zebra, bgpd, ospfd, bfdd, staticd]
 ospf_area: 0
 ospf_network_type: point-to-point
-
-# BGP settings
-bgp_overlay_enabled: true
 bgp_update_source: lo
 bgp_ebgp_multihop: 2
+bfd_profile: FABRIC

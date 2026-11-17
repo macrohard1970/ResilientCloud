@@ -1,75 +1,100 @@
 ---
-# Deploy FRR configs to all routing nodes and verify
-# Usage: ansible-playbook -i inventory.yml playbooks/deploy-configs.yml
+# Push FRR configs to the routers and verify the fabric.
+#
+# Run from automation/ansible on the EC2 lab host, limited to that host's region:
+#   ansible-playbook -i inventory-multi-region.yml playbooks/deploy-configs.yml -l dc_east
+#   ansible-playbook -i inventory.yml playbooks/deploy-configs.yml          # single-region lab
+#
+# Connection: docker exec (community.docker.docker). Install the collection with
+#   ansible-galaxy collection install -r requirements.yml
 
 - name: Push FRR configuration to routing nodes
   hosts: routers
-  gather_facts: no
+  gather_facts: false
+  vars:
+    frr_src: "{{ playbook_dir }}/../../../configs/frr/{{ inventory_hostname }}"
   tasks:
+    - name: Check FRR is running
+      ansible.builtin.command: vtysh -c "show version"
+      changed_when: false
+
+    # /etc/frr/*.conf are single-file bind mounts from the repo. An atomic
+    # rename onto a bind mount fails with EBUSY, so write in place.
     - name: Copy frr.conf to router
-      copy:
-        src: "{{ lookup('env', 'PWD') }}/../configs/frr/{{ inventory_hostname }}/frr.conf"
-        dest: /etc/frr/frr.conf
-        mode: '0644'
+      ansible.builtin.copy:
+        src: "{{ frr_src }}/frr.conf"
+        dest: "{{ frr_config_dir }}/frr.conf"
+        mode: "0644"
+        unsafe_writes: true
       notify: Reload FRR
 
     - name: Copy daemons file to router
-      copy:
-        src: "{{ lookup('env', 'PWD') }}/../configs/frr/{{ inventory_hostname }}/daemons"
-        dest: /etc/frr/daemons
-        mode: '0644'
-      notify: Reload FRR
+      ansible.builtin.copy:
+        src: "{{ frr_src }}/daemons"
+        dest: "{{ frr_config_dir }}/daemons"
+        mode: "0644"
+        unsafe_writes: true
+      register: daemons_file
 
-    - name: Ensure FRR is running
-      command: /usr/lib/frr/frrinit.sh start
-      changed_when: false
+    - name: Warn when the daemons file changed
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}: daemons file changed. Enabling or disabling a
+          daemon needs a node restart: containerlab deploy -t <topology> --reconfigure
+      when: daemons_file is changed
 
   handlers:
+    # frr-reload.py applies only the diff. Do not use "frrinit.sh reload":
+    # watchfrr is the container's main process, so restarting it stops the node.
     - name: Reload FRR
-      command: /usr/lib/frr/frrinit.sh reload
+      ansible.builtin.command: "{{ frr_reload_cmd }}"
 
-- name: Verify BGP sessions on spines
-  hosts: spines
-  gather_facts: no
+- name: Verify BGP sessions on spines and WAN edges
+  hosts: spines:wan_edges
+  gather_facts: false
   tasks:
     - name: Show BGP summary
-      command: vtysh -c "show ip bgp summary"
+      ansible.builtin.command: vtysh -c "show ip bgp summary"
       register: bgp_summary
       changed_when: false
 
     - name: Display BGP summary
-      debug:
+      ansible.builtin.debug:
         var: bgp_summary.stdout_lines
 
 - name: Verify OSPF neighbors on all routers
   hosts: routers
-  gather_facts: no
+  gather_facts: false
   tasks:
     - name: Show OSPF neighbors
-      command: vtysh -c "show ip ospf neighbor"
+      ansible.builtin.command: vtysh -c "show ip ospf neighbor"
       register: ospf_neighbors
       changed_when: false
 
     - name: Display OSPF neighbors
-      debug:
+      ansible.builtin.debug:
         var: ospf_neighbors.stdout_lines
 
-- name: Verify end-to-end connectivity from hosts
+# Alpine hosts have no Python, so only the raw module is used here.
+- name: Verify connectivity from endpoint hosts
   hosts: hosts_group
-  gather_facts: no
+  gather_facts: false
   tasks:
     - name: Ping own gateway
-      command: "ping -c 3 {{ gateway }}"
+      ansible.builtin.raw: "ping -c 3 -W 2 {{ gateway }}"
       register: gw_ping
       changed_when: false
+      failed_when: false
 
-    - name: Ping a remote host (cross-fabric)
-      command: "ping -c 3 10.10.3.1"
+    - name: Ping host-c in the same region (across the fabric)
+      ansible.builtin.raw: "ping -c 3 -W 2 {{ ping_target }}"
       register: remote_ping
-      when: inventory_hostname != 'host-c'
+      when: data_ip != ping_target
       changed_when: false
-      ignore_errors: yes
+      failed_when: false
 
     - name: Display ping results
-      debug:
-        msg: "Gateway: {{ gw_ping.rc }} | Remote: {{ remote_ping.rc | default('N/A') }}"
+      ansible.builtin.debug:
+        msg: >-
+          gateway {{ gateway }}: {{ 'ok' if gw_ping.rc == 0 else 'FAIL' }} |
+          {{ ping_target }}: {{ ('ok' if remote_ping.rc == 0 else 'FAIL') if remote_ping.rc is defined else 'n/a' }}

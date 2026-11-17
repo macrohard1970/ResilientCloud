@@ -1,13 +1,6 @@
 ---
-# Group vars for spines
-
-# Spines share AS 65001 and are route reflectors
+# Spines: AS 65001 in every region. iBGP to the peer spine, eBGP to the four
+# leaves and the WAN edge (eBGP re-advertises routes, so no route reflection).
 spine_asn: 65001
-route_reflector: true
-
-# List of all leaf loopback IPs (route-reflector clients)
-rr_clients:
-  - {ip: 10.255.0.11, asn: 65101, name: leaf1}
-  - {ip: 10.255.0.12, asn: 65102, name: leaf2}
-  - {ip: 10.255.0.13, asn: 65103, name: leaf3}
-  - {ip: 10.255.0.14, asn: 65104, name: leaf4}
+route_reflector: false
+leaf_asns: [65101, 65102, 65103, 65104]
