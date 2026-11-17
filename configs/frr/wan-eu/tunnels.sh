@@ -1,38 +1,32 @@
 #!/bin/sh
-# GRE tunnel setup — wan-eu (DC-EU)
-# Creates GRE tunnel interfaces to DC-East and DC-West wan-edge routers.
+# GRE tunnel setup — wan-eu
+# Runs inside the wan-eu container (Containerlab exec) and creates
+# tun-east, tun-west.
 #
-# Environment variables:
-#   LOCAL_IP     — this EC2 host's VPC private IP (GRE source)
-#   REMOTE_EAST  — DC-East EC2 host's VPC private IP (GRE dest)
-#   REMOTE_WEST  — DC-West EC2 host's VPC private IP (GRE dest)
+# Addressing:
+#   GRE source      = this container's management IP (eth0). The EC2 host
+#                     masquerades it to the host's VPC IP on the way out and
+#                     forwards inbound GRE back to it (scripts/gre-nat.sh).
+#   GRE destination = remote EC2 host private IP, from the environment:
+#     REMOTE_EAST  — DC-East lab host private IP
+#     REMOTE_WEST  — DC-West lab host private IP
+#   Tunnel IPs are configured by FRR (frr.conf), not here.
 #
-# Tunnel IPs:
-#   tun-east: 10.110.0.6/30 (remote: 10.110.0.5 on wan-east)
-#   tun-west: 10.110.0.10/30 (remote: 10.110.0.9 on wan-west)
+# A tunnel whose REMOTE_* variable is empty is skipped, so a region can
+# run on its own without the WAN.
 
 set -e
 
-if ! command -v ip >/dev/null 2>&1; then
-  apk add --no-cache iproute2 2>/dev/null || apt-get install -y iproute2 2>/dev/null
-fi
+LOCAL_IP=$(ip -4 -o addr show dev eth0 | awk '{print $4}' | cut -d/ -f1)
 
-# Create GRE tunnel to DC-East
-if [ -n "$REMOTE_EAST" ]; then
-  ip tunnel del tun-east 2>/dev/null || true
-  ip tunnel add tun-east mode gre local "$LOCAL_IP" remote "$REMOTE_EAST" ttl 64
-  ip link set tun-east up
-  echo "Created GRE tunnel tun-east: $LOCAL_IP -> $REMOTE_EAST"
-else
-  echo "WARNING: REMOTE_EAST not set - tun-east not created"
-fi
+mk_tunnel() {  # name remote
+  [ -n "$2" ] || { echo "$1: remote IP not set - skipped"; return 0; }
+  ip tunnel del "$1" 2>/dev/null || true
+  ip tunnel add "$1" mode gre local "$LOCAL_IP" remote "$2" ttl 64
+  # Inter-region VPC peering MTU is 1500; GRE adds 24 bytes
+  ip link set "$1" mtu 1476 up
+  echo "$1: $LOCAL_IP -> $2"
+}
 
-# Create GRE tunnel to DC-West
-if [ -n "$REMOTE_WEST" ]; then
-  ip tunnel del tun-west 2>/dev/null || true
-  ip tunnel add tun-west mode gre local "$LOCAL_IP" remote "$REMOTE_WEST" ttl 64
-  ip link set tun-west up
-  echo "Created GRE tunnel tun-west: $LOCAL_IP -> $REMOTE_WEST"
-else
-  echo "WARNING: REMOTE_WEST not set - tun-west not created"
-fi
+mk_tunnel tun-east "${REMOTE_EAST:-}"
+mk_tunnel tun-west "${REMOTE_WEST:-}"

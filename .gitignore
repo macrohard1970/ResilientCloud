@@ -33,3 +33,6 @@ id_ed25519*
 known_hosts
 credentials.yml
 vault-password-file
+
+# Downloaded binaries (scripts/fetch-frr-exporter.sh)
+bin/frr_exporter

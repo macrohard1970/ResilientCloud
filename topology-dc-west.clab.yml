@@ -22,121 +22,136 @@ topology:
     # ── Spines (FRR, AS 65001) ────────────────────────────────────────
     dc-west-spine1:
       kind: linux
-      image: frrouting/frr:10.2.1
+      image: quay.io/frrouting/frr:10.2.1
       mgmt-ipv4: 10.254.255.11
       binds:
         - configs/frr/dc-west-spine1/daemons:/etc/frr/daemons
         - configs/frr/dc-west-spine1/frr.conf:/etc/frr/frr.conf
         - configs/frr/dc-west-spine1/vtysh.conf:/etc/frr/vtysh.conf
+        - bin:/opt/rc/bin:ro
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
         FRR_ENABLE_BGPD: "yes"
       exec:
-        - /usr/lib/frr/frrinit.sh start
+        # frr_exporter (Prometheus metrics on :9342); skipped if bin/frr_exporter is absent
+        - sh -c '[ -x /opt/rc/bin/frr_exporter ] && (nohup /opt/rc/bin/frr_exporter --web.listen-address=:9342 >/var/log/frr_exporter.log 2>&1 &) || true'
       user: root
 
     dc-west-spine2:
       kind: linux
-      image: frrouting/frr:10.2.1
+      image: quay.io/frrouting/frr:10.2.1
       mgmt-ipv4: 10.254.255.12
       binds:
         - configs/frr/dc-west-spine2/daemons:/etc/frr/daemons
         - configs/frr/dc-west-spine2/frr.conf:/etc/frr/frr.conf
         - configs/frr/dc-west-spine2/vtysh.conf:/etc/frr/vtysh.conf
+        - bin:/opt/rc/bin:ro
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
         FRR_ENABLE_BGPD: "yes"
       exec:
-        - /usr/lib/frr/frrinit.sh start
+        # frr_exporter (Prometheus metrics on :9342); skipped if bin/frr_exporter is absent
+        - sh -c '[ -x /opt/rc/bin/frr_exporter ] && (nohup /opt/rc/bin/frr_exporter --web.listen-address=:9342 >/var/log/frr_exporter.log 2>&1 &) || true'
       user: root
 
     # ── Leaves (FRR, unique ASNs per leaf) ───────────────────────────
     dc-west-leaf1:
       kind: linux
-      image: frrouting/frr:10.2.1
+      image: quay.io/frrouting/frr:10.2.1
       mgmt-ipv4: 10.254.255.21
       binds:
         - configs/frr/dc-west-leaf1/daemons:/etc/frr/daemons
         - configs/frr/dc-west-leaf1/frr.conf:/etc/frr/frr.conf
         - configs/frr/dc-west-leaf1/vtysh.conf:/etc/frr/vtysh.conf
+        - bin:/opt/rc/bin:ro
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
         FRR_ENABLE_BGPD: "yes"
       exec:
-        - /usr/lib/frr/frrinit.sh start
+        # frr_exporter (Prometheus metrics on :9342); skipped if bin/frr_exporter is absent
+        - sh -c '[ -x /opt/rc/bin/frr_exporter ] && (nohup /opt/rc/bin/frr_exporter --web.listen-address=:9342 >/var/log/frr_exporter.log 2>&1 &) || true'
       user: root
 
     dc-west-leaf2:
       kind: linux
-      image: frrouting/frr:10.2.1
+      image: quay.io/frrouting/frr:10.2.1
       mgmt-ipv4: 10.254.255.22
       binds:
         - configs/frr/dc-west-leaf2/daemons:/etc/frr/daemons
         - configs/frr/dc-west-leaf2/frr.conf:/etc/frr/frr.conf
         - configs/frr/dc-west-leaf2/vtysh.conf:/etc/frr/vtysh.conf
+        - bin:/opt/rc/bin:ro
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
         FRR_ENABLE_BGPD: "yes"
       exec:
-        - /usr/lib/frr/frrinit.sh start
+        # frr_exporter (Prometheus metrics on :9342); skipped if bin/frr_exporter is absent
+        - sh -c '[ -x /opt/rc/bin/frr_exporter ] && (nohup /opt/rc/bin/frr_exporter --web.listen-address=:9342 >/var/log/frr_exporter.log 2>&1 &) || true'
       user: root
 
     dc-west-leaf3:
       kind: linux
-      image: frrouting/frr:10.2.1
+      image: quay.io/frrouting/frr:10.2.1
       mgmt-ipv4: 10.254.255.23
       binds:
         - configs/frr/dc-west-leaf3/daemons:/etc/frr/daemons
         - configs/frr/dc-west-leaf3/frr.conf:/etc/frr/frr.conf
         - configs/frr/dc-west-leaf3/vtysh.conf:/etc/frr/vtysh.conf
+        - bin:/opt/rc/bin:ro
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
         FRR_ENABLE_BGPD: "yes"
       exec:
-        - /usr/lib/frr/frrinit.sh start
+        # frr_exporter (Prometheus metrics on :9342); skipped if bin/frr_exporter is absent
+        - sh -c '[ -x /opt/rc/bin/frr_exporter ] && (nohup /opt/rc/bin/frr_exporter --web.listen-address=:9342 >/var/log/frr_exporter.log 2>&1 &) || true'
       user: root
 
     dc-west-leaf4:
       kind: linux
-      image: frrouting/frr:10.2.1
+      image: quay.io/frrouting/frr:10.2.1
       mgmt-ipv4: 10.254.255.24
       binds:
         - configs/frr/dc-west-leaf4/daemons:/etc/frr/daemons
         - configs/frr/dc-west-leaf4/frr.conf:/etc/frr/frr.conf
         - configs/frr/dc-west-leaf4/vtysh.conf:/etc/frr/vtysh.conf
+        - bin:/opt/rc/bin:ro
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
         FRR_ENABLE_BGPD: "yes"
       exec:
-        - /usr/lib/frr/frrinit.sh start
+        # frr_exporter (Prometheus metrics on :9342); skipped if bin/frr_exporter is absent
+        - sh -c '[ -x /opt/rc/bin/frr_exporter ] && (nohup /opt/rc/bin/frr_exporter --web.listen-address=:9342 >/var/log/frr_exporter.log 2>&1 &) || true'
       user: root
 
     # ── WAN edge router (FRR, AS 65020) ──────────────────────────────
     wan-west:
       kind: linux
-      image: frrouting/frr:10.2.1
+      image: quay.io/frrouting/frr:10.2.1
       mgmt-ipv4: 10.254.255.50
       binds:
         - configs/frr/wan-west/daemons:/etc/frr/daemons
         - configs/frr/wan-west/frr.conf:/etc/frr/frr.conf
         - configs/frr/wan-west/vtysh.conf:/etc/frr/vtysh.conf
+        - bin:/opt/rc/bin:ro
         - configs/frr/wan-west/tunnels.sh:/tunnels.sh
       env:
         FRR_ENABLE_ZEBRA: "yes"
         FRR_ENABLE_OSPFD: "yes"
         FRR_ENABLE_BGPD: "yes"
-        LOCAL_IP: ""
-        REMOTE_EAST: ""
-        REMOTE_EU: ""
+        # Remote EC2 lab host private IPs, read from the shell environment at
+        # deploy time (empty = tunnel skipped). GRE source is set by tunnels.sh.
+        REMOTE_EAST: ${REMOTE_EAST:=}
+        REMOTE_EU: ${REMOTE_EU:=}
       exec:
         - sh /tunnels.sh
-        - /usr/lib/frr/frrinit.sh start
+        # frr_exporter (Prometheus metrics on :9342); skipped if bin/frr_exporter is absent
+        - sh -c '[ -x /opt/rc/bin/frr_exporter ] && (nohup /opt/rc/bin/frr_exporter --web.listen-address=:9342 >/var/log/frr_exporter.log 2>&1 &) || true'
       user: root
 
     # ── Endpoint hosts (Alpine) ──────────────────────────────────────
