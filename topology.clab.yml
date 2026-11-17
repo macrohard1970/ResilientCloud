@@ -14,7 +14,7 @@ prefix: ""
 # ── Management network ────────────────────────────────────────────────
 # Every container gets an IP on 10.255.255.0/24 for OOB access.
 mgmt:
-  network: clab-netlab-mgmt
+  network: clab-netlab-east-mgmt   # same network as topology-dc-east (run one or the other)
   ipv4-subnet: 10.255.255.0/24
 
 # ── Topology nodes ───────────────────────────────────────────────────

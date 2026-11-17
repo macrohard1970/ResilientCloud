@@ -1,0 +1,27 @@
+# SuzieQ poller inventory for dc-west (SuzieQ >= 0.16 format).
+# OPTIONAL: the FRR image has no SSH server. Before enabling the 'suzieq'
+# compose profile, install and start sshd on each node and authorize the key
+# mounted at suzieq/ssh/id_ed25519 (see monitoring/README.md).
+sources:
+- name: dc-west-routers
+  hosts:
+  - url: ssh://10.254.255.11
+  - url: ssh://10.254.255.12
+  - url: ssh://10.254.255.21
+  - url: ssh://10.254.255.22
+  - url: ssh://10.254.255.23
+  - url: ssh://10.254.255.24
+  - url: ssh://10.254.255.50
+devices:
+- name: frr-nodes
+  transport: ssh
+  ignore-known-hosts: true
+auths:
+- name: lab-root
+  username: root
+  keyfile: /home/suzieq/.ssh/id_ed25519
+namespaces:
+- name: dc-west
+  source: dc-west-routers
+  device: frr-nodes
+  auth: lab-root

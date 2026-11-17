@@ -36,3 +36,9 @@ vault-password-file
 
 # Downloaded binaries (scripts/fetch-frr-exporter.sh)
 bin/frr_exporter
+
+# Monitoring local material
+monitoring/suzieq/ssh/*
+!monitoring/suzieq/ssh/.gitkeep
+monitoring/batfish/snapshots/*
+!monitoring/batfish/snapshots/.gitkeep

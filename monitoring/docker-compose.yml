@@ -1,23 +1,25 @@
-# Monitoring stack for the Free Networking Lab
-# Services network: 10.20.0.0/24
+# ResilientCloud monitoring stack — one instance per region.
 #
-# Start:  docker compose up -d
-# Stop:   docker compose down
-# Logs:   docker compose logs -f
+#   docker compose --env-file env/dc-east.env up -d                 # Prometheus + Grafana
+#   docker compose --env-file env/dc-east.env --profile batfish up -d   # + Batfish
+#   docker compose --env-file env/dc-east.env --profile dns up -d       # + dnsmasq
+#   docker compose --env-file env/dc-east.env --profile suzieq up -d    # + SuzieQ (needs sshd on nodes)
+#   docker compose --env-file env/dc-east.env down
 #
-# Access:
-#   Grafana     http://localhost:3000  (admin/admin)
-#   Prometheus  http://localhost:9090
-#   Suzieq API  http://localhost:8000
-#   Batfish     http://localhost:9000
-#   gNMIc       http://localhost:7890
+# Start the region's Containerlab topology first: it creates ${MGMT_NET}.
+# Only Prometheus and Grafana run by default to keep the EC2 host small.
+# Published ports bind to 127.0.0.1; reach them with an SSH tunnel.
+
+name: rc-${REGION:?set REGION via --env-file env/<region>.env}-monitoring
 
 networks:
-  monitoring:
-    name: clab-netlab-services
-    external: true    # Containerlab creates this; or create manually below
+  services:
+    name: rc-${REGION}-services
+    ipam:
+      config:
+        - subnet: ${SVC_SUBNET}
   mgmt:
-    name: clab-netlab-mgmt
+    name: ${MGMT_NET}
     external: true
 
 volumes:
@@ -26,114 +28,82 @@ volumes:
   suzieq_data:
 
 services:
-
-  # ── Prometheus — metrics collection ──────────────────────────────
   prometheus:
     image: prom/prometheus:v2.55.0
-    container_name: netlab-prometheus
+    container_name: rc-${REGION}-prometheus
     restart: unless-stopped
     networks:
-      monitoring:
-        ipv4_address: 10.20.0.10
-      mgmt:
-        ipv4_address: 10.255.255.41
+      services: {ipv4_address: "${SVC_PREFIX}.10"}
+      mgmt: {ipv4_address: "${MGMT_PREFIX}.41"}
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/targets/${REGION}.yml:/etc/prometheus/targets/frr.yml:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=30d"
+      - "--storage.tsdb.retention.time=7d"
       - "--web.enable-lifecycle"
     ports:
-      - "9090:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT}:9090"
 
-  # ── Grafana — dashboards & visualization ──────────────────────────
   grafana:
     image: grafana/grafana:11.3.0
-    container_name: netlab-grafana
+    container_name: rc-${REGION}-grafana
     restart: unless-stopped
     networks:
-      monitoring:
-        ipv4_address: 10.20.0.11
-      mgmt:
-        ipv4_address: 10.255.255.42
+      services: {ipv4_address: "${SVC_PREFIX}.11"}
+      mgmt: {ipv4_address: "${MGMT_PREFIX}.42"}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # Override with: export GRAFANA_ADMIN_PASSWORD=...  (lab default: admin)
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
     ports:
-      - "3000:3000"
+      - "127.0.0.1:${GRAFANA_PORT}:3000"
     depends_on:
       - prometheus
 
-  # ── gNMIc — gNMI telemetry collector ──────────────────────────────
-  gnmic:
-    image: ghcr.io/openconfig/gnmic:0.36.0
-    container_name: netlab-gnmic
-    restart: unless-stopped
-    networks:
-      monitoring:
-        ipv4_address: 10.20.0.14
-      mgmt:
-        ipv4_address: 10.255.255.45
-    volumes:
-      - ./gnmic/gnmic.yml:/etc/gnmic/gnmic.yml:ro
-    command: ["--config", "/etc/gnmic/gnmic.yml", "subscribe"]
-    ports:
-      - "9804:9804"   # Prometheus metrics endpoint
-    depends_on:
-      - prometheus
+  # ── Optional ────────────────────────────────────────────────────────
 
-  # ── Suzieq — network observability ────────────────────────────────
   suzieq:
-    image: netenglabs/suzieq:0.22.1
-    container_name: netlab-suzieq
+    profiles: [suzieq]
+    image: netenglabs/suzieq:0.25.0
+    container_name: rc-${REGION}-suzieq
     restart: unless-stopped
     networks:
-      monitoring:
-        ipv4_address: 10.20.0.12
-      mgmt:
-        ipv4_address: 10.255.255.43
+      services: {ipv4_address: "${SVC_PREFIX}.12"}
+      mgmt: {ipv4_address: "${MGMT_PREFIX}.43"}
     volumes:
-      - suzieq_data:/suzieq/parquet
-      - ./suzieq/suzieq.yml:/etc/suzieq/suzieq.yml:ro
-    ports:
-      - "8000:8000"
+      - suzieq_data:/home/suzieq/parquet
+      - ./suzieq/inventory.${REGION}.yml:/home/suzieq/inventory.yml:ro
+      - ./suzieq/ssh:/home/suzieq/.ssh:ro
+    command: ["sq-poller", "-I", "/home/suzieq/inventory.yml"]
 
-  # ── Batfish — pre-deployment config analysis ──────────────────────
   batfish:
+    profiles: [batfish]
     image: batfish/batfish:latest
-    container_name: netlab-batfish
+    container_name: rc-${REGION}-batfish
     restart: unless-stopped
     networks:
-      monitoring:
-        ipv4_address: 10.20.0.13
-      mgmt:
-        ipv4_address: 10.255.255.44
-    volumes:
-      - ./batfish/networks:/data/networks:ro
+      services: {ipv4_address: "${SVC_PREFIX}.13"}
     ports:
-      - "9996:9996"   # REST API
-      - "9000:9000"   # Question UI
+      - "127.0.0.1:${BATFISH_PORT}:9996"   # pybatfish API
 
-  # ── dnsmasq — DNS/DHCP for lab ────────────────────────────────────
   dnsmasq:
-    image: astridyu/dnsmasq:latest
-    container_name: netlab-dnsmasq
+    profiles: [dns]
+    image: alpine:3.20
+    container_name: rc-${REGION}-dnsmasq
     restart: unless-stopped
     networks:
-      monitoring:
-        ipv4_address: 10.20.0.15
-      mgmt:
-        ipv4_address: 10.255.255.46
+      services: {ipv4_address: "${SVC_PREFIX}.15"}
+      mgmt: {ipv4_address: "${MGMT_PREFIX}.46"}
     volumes:
       - ./dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:ro
-      - ./dnsmasq/hosts:/etc/hosts.lab:ro
-    command: ["--conf-file=/etc/dnsmasq.conf", "--no-daemon"]
-    ports:
-      - "53:53/tcp"
-      - "53:53/udp"
+      - ./dnsmasq/hosts.${REGION}:/etc/hosts.lab:ro
+    # No host port: lab containers query it on ${MGMT_PREFIX}.46. Publishing :53
+    # on the EC2 host would clash with the host's own resolver.
+    command: ["sh", "-c", "apk add --no-cache dnsmasq >/dev/null && exec dnsmasq --keep-in-foreground --conf-file=/etc/dnsmasq.conf"]

@@ -1,24 +1,25 @@
-# Prometheus configuration
-# Scrape gNMIc metrics endpoint and self-monitor
+# Prometheus — one instance per region (see docker-compose.yml).
+# FRR metrics come from frr_exporter running inside every FRR node on :9342.
+# Targets for this region are mounted at /etc/prometheus/targets/frr.yml.
 
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
 scrape_configs:
-  # Self-monitoring
   - job_name: "prometheus"
     static_configs:
       - targets: ["localhost:9090"]
 
-  # gNMIc telemetry metrics (interface counters, BGP state, etc.)
-  - job_name: "gnmic"
-    static_configs:
-      - targets: ["gnmic:9804"]
-    scrape_interval: 10s
+  - job_name: "frr"
+    scrape_interval: 15s
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/*.yml"]
+    relabel_configs:
+      # Show device names (dc-east-spine1) instead of IP:port
+      - source_labels: [device]
+        target_label: instance
 
-  # Grafana metrics
   - job_name: "grafana"
     static_configs:
       - targets: ["grafana:3000"]
-    metrics_path: /metrics

@@ -1,0 +1,21 @@
+# dc-west name resolution (dnsmasq, domain lab.internal). Management IPs unless noted.
+10.254.255.11   dc-west-spine1.lab.internal dc-west-spine1
+10.254.255.12   dc-west-spine2.lab.internal dc-west-spine2
+10.254.255.21   dc-west-leaf1.lab.internal dc-west-leaf1
+10.254.255.22   dc-west-leaf2.lab.internal dc-west-leaf2
+10.254.255.23   dc-west-leaf3.lab.internal dc-west-leaf3
+10.254.255.24   dc-west-leaf4.lab.internal dc-west-leaf4
+10.254.255.50   wan-west.lab.internal wan-west
+10.254.255.31   dc-west-host-a.lab.internal dc-west-host-a
+10.11.1.1       dc-west-host-a-data.lab.internal
+10.254.255.32   dc-west-host-b.lab.internal dc-west-host-b
+10.11.2.1       dc-west-host-b-data.lab.internal
+10.254.255.33   dc-west-host-c.lab.internal dc-west-host-c
+10.11.3.1       dc-west-host-c-data.lab.internal
+10.254.255.34   dc-west-host-d.lab.internal dc-west-host-d
+10.11.4.1       dc-west-host-d-data.lab.internal
+10.254.255.41      rc-dc-west-prometheus.lab.internal rc-dc-west-prometheus
+10.254.255.42      rc-dc-west-grafana.lab.internal rc-dc-west-grafana
+10.254.255.43      rc-dc-west-suzieq.lab.internal rc-dc-west-suzieq
+10.254.255.44      rc-dc-west-batfish.lab.internal rc-dc-west-batfish
+10.254.255.46      rc-dc-west-dnsmasq.lab.internal rc-dc-west-dnsmasq

@@ -1,0 +1,15 @@
+# frr_exporter targets for dc-eu (one per FRR node, mgmt IP :9342)
+- targets: ['10.253.255.11:9342']
+  labels: {device: dc-eu-spine1, role: spine, region: dc-eu}
+- targets: ['10.253.255.12:9342']
+  labels: {device: dc-eu-spine2, role: spine, region: dc-eu}
+- targets: ['10.253.255.21:9342']
+  labels: {device: dc-eu-leaf1, role: leaf, region: dc-eu}
+- targets: ['10.253.255.22:9342']
+  labels: {device: dc-eu-leaf2, role: leaf, region: dc-eu}
+- targets: ['10.253.255.23:9342']
+  labels: {device: dc-eu-leaf3, role: leaf, region: dc-eu}
+- targets: ['10.253.255.24:9342']
+  labels: {device: dc-eu-leaf4, role: leaf, region: dc-eu}
+- targets: ['10.253.255.50:9342']
+  labels: {device: wan-eu, role: wan-edge, region: dc-eu}

@@ -1,0 +1,21 @@
+# dc-east name resolution (dnsmasq, domain lab.internal). Management IPs unless noted.
+10.255.255.11   dc-east-spine1.lab.internal dc-east-spine1
+10.255.255.12   dc-east-spine2.lab.internal dc-east-spine2
+10.255.255.21   dc-east-leaf1.lab.internal dc-east-leaf1
+10.255.255.22   dc-east-leaf2.lab.internal dc-east-leaf2
+10.255.255.23   dc-east-leaf3.lab.internal dc-east-leaf3
+10.255.255.24   dc-east-leaf4.lab.internal dc-east-leaf4
+10.255.255.50   wan-east.lab.internal wan-east
+10.255.255.31   dc-east-host-a.lab.internal dc-east-host-a
+10.10.1.1       dc-east-host-a-data.lab.internal
+10.255.255.32   dc-east-host-b.lab.internal dc-east-host-b
+10.10.2.1       dc-east-host-b-data.lab.internal
+10.255.255.33   dc-east-host-c.lab.internal dc-east-host-c
+10.10.3.1       dc-east-host-c-data.lab.internal
+10.255.255.34   dc-east-host-d.lab.internal dc-east-host-d
+10.10.4.1       dc-east-host-d-data.lab.internal
+10.255.255.41      rc-dc-east-prometheus.lab.internal rc-dc-east-prometheus
+10.255.255.42      rc-dc-east-grafana.lab.internal rc-dc-east-grafana
+10.255.255.43      rc-dc-east-suzieq.lab.internal rc-dc-east-suzieq
+10.255.255.44      rc-dc-east-batfish.lab.internal rc-dc-east-batfish
+10.255.255.46      rc-dc-east-dnsmasq.lab.internal rc-dc-east-dnsmasq

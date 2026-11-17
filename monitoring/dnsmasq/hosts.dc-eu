@@ -1,0 +1,21 @@
+# dc-eu name resolution (dnsmasq, domain lab.internal). Management IPs unless noted.
+10.253.255.11   dc-eu-spine1.lab.internal dc-eu-spine1
+10.253.255.12   dc-eu-spine2.lab.internal dc-eu-spine2
+10.253.255.21   dc-eu-leaf1.lab.internal dc-eu-leaf1
+10.253.255.22   dc-eu-leaf2.lab.internal dc-eu-leaf2
+10.253.255.23   dc-eu-leaf3.lab.internal dc-eu-leaf3
+10.253.255.24   dc-eu-leaf4.lab.internal dc-eu-leaf4
+10.253.255.50   wan-eu.lab.internal wan-eu
+10.253.255.31   dc-eu-host-a.lab.internal dc-eu-host-a
+10.12.1.1       dc-eu-host-a-data.lab.internal
+10.253.255.32   dc-eu-host-b.lab.internal dc-eu-host-b
+10.12.2.1       dc-eu-host-b-data.lab.internal
+10.253.255.33   dc-eu-host-c.lab.internal dc-eu-host-c
+10.12.3.1       dc-eu-host-c-data.lab.internal
+10.253.255.34   dc-eu-host-d.lab.internal dc-eu-host-d
+10.12.4.1       dc-eu-host-d-data.lab.internal
+10.253.255.41      rc-dc-eu-prometheus.lab.internal rc-dc-eu-prometheus
+10.253.255.42      rc-dc-eu-grafana.lab.internal rc-dc-eu-grafana
+10.253.255.43      rc-dc-eu-suzieq.lab.internal rc-dc-eu-suzieq
+10.253.255.44      rc-dc-eu-batfish.lab.internal rc-dc-eu-batfish
+10.253.255.46      rc-dc-eu-dnsmasq.lab.internal rc-dc-eu-dnsmasq

@@ -1,6 +1,3 @@
-# Grafana provisioning — datasources
-# Auto-configures Prometheus as the default data source on startup
-
 apiVersion: 1
 
 datasources:
@@ -9,10 +6,4 @@ datasources:
     access: proxy
     url: http://prometheus:9090
     isDefault: true
-    editable: true
-
-  - name: Suzieq
-    type: suzieq
-    access: proxy
-    url: http://suzieq:8000
     editable: true
