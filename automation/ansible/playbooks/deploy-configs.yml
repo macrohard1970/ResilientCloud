@@ -1,0 +1,75 @@
+---
+# Deploy FRR configs to all routing nodes and verify
+# Usage: ansible-playbook -i inventory.yml playbooks/deploy-configs.yml
+
+- name: Push FRR configuration to routing nodes
+  hosts: routers
+  gather_facts: no
+  tasks:
+    - name: Copy frr.conf to router
+      copy:
+        src: "{{ lookup('env', 'PWD') }}/../configs/frr/{{ inventory_hostname }}/frr.conf"
+        dest: /etc/frr/frr.conf
+        mode: '0644'
+      notify: Reload FRR
+
+    - name: Copy daemons file to router
+      copy:
+        src: "{{ lookup('env', 'PWD') }}/../configs/frr/{{ inventory_hostname }}/daemons"
+        dest: /etc/frr/daemons
+        mode: '0644'
+      notify: Reload FRR
+
+    - name: Ensure FRR is running
+      command: /usr/lib/frr/frrinit.sh start
+      changed_when: false
+
+  handlers:
+    - name: Reload FRR
+      command: /usr/lib/frr/frrinit.sh reload
+
+- name: Verify BGP sessions on spines
+  hosts: spines
+  gather_facts: no
+  tasks:
+    - name: Show BGP summary
+      command: vtysh -c "show ip bgp summary"
+      register: bgp_summary
+      changed_when: false
+
+    - name: Display BGP summary
+      debug:
+        var: bgp_summary.stdout_lines
+
+- name: Verify OSPF neighbors on all routers
+  hosts: routers
+  gather_facts: no
+  tasks:
+    - name: Show OSPF neighbors
+      command: vtysh -c "show ip ospf neighbor"
+      register: ospf_neighbors
+      changed_when: false
+
+    - name: Display OSPF neighbors
+      debug:
+        var: ospf_neighbors.stdout_lines
+
+- name: Verify end-to-end connectivity from hosts
+  hosts: hosts_group
+  gather_facts: no
+  tasks:
+    - name: Ping own gateway
+      command: "ping -c 3 {{ gateway }}"
+      register: gw_ping
+      changed_when: false
+
+    - name: Ping a remote host (cross-fabric)
+      command: "ping -c 3 10.10.3.1"
+      register: remote_ping
+      when: inventory_hostname != 'host-c'
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Display ping results
+      debug:
+        msg: "Gateway: {{ gw_ping.rc }} | Remote: {{ remote_ping.rc | default('N/A') }}"

@@ -1,0 +1,13 @@
+---
+# Group vars for spines
+
+# Spines share AS 65001 and are route reflectors
+spine_asn: 65001
+route_reflector: true
+
+# List of all leaf loopback IPs (route-reflector clients)
+rr_clients:
+  - {ip: 10.255.0.11, asn: 65101, name: leaf1}
+  - {ip: 10.255.0.12, asn: 65102, name: leaf2}
+  - {ip: 10.255.0.13, asn: 65103, name: leaf3}
+  - {ip: 10.255.0.14, asn: 65104, name: leaf4}

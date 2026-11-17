@@ -1,0 +1,53 @@
+# Suzieq configuration
+# Polls FRR nodes via SSH to collect routing/interface/BGP state
+
+namespace: netlab
+data-directory: /suzieq/parquet
+
+# Polling schedule
+period: 60
+
+# Service definitions — define which data to collect
+service:
+  - name: interfaces
+  - name: bgp
+  - name: ospf
+  - name: routes
+  - name: address
+  - name: lldp
+  - name: arpnd
+  - name: vlan
+  - name: mlag
+
+# Device inventory — all FRR nodes polled via SSH on management IPs
+devices:
+  - name: spine1
+    transport: ssh
+    address: 10.255.255.11
+    username: root
+    devtype: linux
+  - name: spine2
+    transport: ssh
+    address: 10.255.255.12
+    username: root
+    devtype: linux
+  - name: leaf1
+    transport: ssh
+    address: 10.255.255.21
+    username: root
+    devtype: linux
+  - name: leaf2
+    transport: ssh
+    address: 10.255.255.22
+    username: root
+    devtype: linux
+  - name: leaf3
+    transport: ssh
+    address: 10.255.255.23
+    username: root
+    devtype: linux
+  - name: leaf4
+    transport: ssh
+    address: 10.255.255.24
+    username: root
+    devtype: linux

@@ -1,0 +1,184 @@
+# Containerlab topology: Free Networking Lab
+# 2 spines + 4 leaves (FRR), 4 endpoint hosts (Alpine), 1 firewall (VyOS)
+# Plus a services network for monitoring/DNS containers.
+#
+# Deploy:   containerlab deploy -t topology.clab.yml
+# Destroy:  containerlab destroy -t topology.clab.yml --cleanup
+# Inspect:  containerlab inspect -t topology.clab.yml
+
+name: netlab
+
+# ── Management network ────────────────────────────────────────────────
+# Every container gets an IP on 10.255.255.0/24 for OOB access.
+mgmt:
+  network: clab-netlab-mgmt
+  ipv4-subnet: 10.255.255.0/24
+
+# ── Topology nodes ───────────────────────────────────────────────────
+topology:
+  nodes:
+
+    # ── Spines (FRR, AS 65001) ────────────────────────────────────────
+    spine1:
+      kind: linux
+      image: frrouting/frr:10.2.1
+      mgmt-ipv4: 10.255.255.11
+      binds:
+        - configs/frr/spine1/daemons:/etc/frr/daemons
+        - configs/frr/spine1/frr.conf:/etc/frr/frr.conf
+        - configs/frr/spine1/vtysh.conf:/etc/frr/vtysh.conf
+      env:
+        FRR_ENABLE_ZEBRA: "yes"
+        FRR_ENABLE_OSPFD: "yes"
+        FRR_ENABLE_BGPD: "yes"
+        FRR_ENABLE_OSPFD_MAXMDB: "no"
+      exec:
+        - /usr/lib/frr/frrinit.sh start
+      user: root
+
+    spine2:
+      kind: linux
+      image: frrouting/frr:10.2.1
+      mgmt-ipv4: 10.255.255.12
+      binds:
+        - configs/frr/spine2/daemons:/etc/frr/daemons
+        - configs/frr/spine2/frr.conf:/etc/frr/frr.conf
+        - configs/frr/spine2/vtysh.conf:/etc/frr/vtysh.conf
+      env:
+        FRR_ENABLE_ZEBRA: "yes"
+        FRR_ENABLE_OSPFD: "yes"
+        FRR_ENABLE_BGPD: "yes"
+      exec:
+        - /usr/lib/frr/frrinit.sh start
+      user: root
+
+    # ── Leaves (FRR, unique ASNs per leaf) ───────────────────────────
+    leaf1:
+      kind: linux
+      image: frrouting/frr:10.2.1
+      mgmt-ipv4: 10.255.255.21
+      binds:
+        - configs/frr/leaf1/daemons:/etc/frr/daemons
+        - configs/frr/leaf1/frr.conf:/etc/frr/frr.conf
+        - configs/frr/leaf1/vtysh.conf:/etc/frr/vtysh.conf
+      env:
+        FRR_ENABLE_ZEBRA: "yes"
+        FRR_ENABLE_OSPFD: "yes"
+        FRR_ENABLE_BGPD: "yes"
+      exec:
+        - /usr/lib/frr/frrinit.sh start
+      user: root
+
+    leaf2:
+      kind: linux
+      image: frrouting/frr:10.2.1
+      mgmt-ipv4: 10.255.255.22
+      binds:
+        - configs/frr/leaf2/daemons:/etc/frr/daemons
+        - configs/frr/leaf2/frr.conf:/etc/frr/frr.conf
+        - configs/frr/leaf2/vtysh.conf:/etc/frr/vtysh.conf
+      env:
+        FRR_ENABLE_ZEBRA: "yes"
+        FRR_ENABLE_OSPFD: "yes"
+        FRR_ENABLE_BGPD: "yes"
+      exec:
+        - /usr/lib/frr/frrinit.sh start
+      user: root
+
+    leaf3:
+      kind: linux
+      image: frrouting/frr:10.2.1
+      mgmt-ipv4: 10.255.255.23
+      binds:
+        - configs/frr/leaf3/daemons:/etc/frr/daemons
+        - configs/frr/leaf3/frr.conf:/etc/frr/frr.conf
+        - configs/frr/leaf3/vtysh.conf:/etc/frr/vtysh.conf
+      env:
+        FRR_ENABLE_ZEBRA: "yes"
+        FRR_ENABLE_OSPFD: "yes"
+        FRR_ENABLE_BGPD: "yes"
+      exec:
+        - /usr/lib/frr/frrinit.sh start
+      user: root
+
+    leaf4:
+      kind: linux
+      image: frrouting/frr:10.2.1
+      mgmt-ipv4: 10.255.255.24
+      binds:
+        - configs/frr/leaf4/daemons:/etc/frr/daemons
+        - configs/frr/leaf4/frr.conf:/etc/frr/frr.conf
+        - configs/frr/leaf4/vtysh.conf:/etc/frr/vtysh.conf
+      env:
+        FRR_ENABLE_ZEBRA: "yes"
+        FRR_ENABLE_OSPFD: "yes"
+        FRR_ENABLE_BGPD: "yes"
+      exec:
+        - /usr/lib/frr/frrinit.sh start
+      user: root
+
+    # ── Endpoint hosts (Alpine) ──────────────────────────────────────
+    host-a:
+      kind: linux
+      image: alpine:3.20
+      mgmt-ipv4: 10.255.255.31
+      binds:
+        - configs/hosts/host-a.init.sh:/init.sh
+      exec:
+        - sh /init.sh
+      user: root
+
+    host-b:
+      kind: linux
+      image: alpine:3.20
+      mgmt-ipv4: 10.255.255.32
+      binds:
+        - configs/hosts/host-b.init.sh:/init.sh
+      exec:
+        - sh /init.sh
+      user: root
+
+    host-c:
+      kind: linux
+      image: alpine:3.20
+      mgmt-ipv4: 10.255.255.33
+      binds:
+        - configs/hosts/host-c.init.sh:/init.sh
+      exec:
+        - sh /init.sh
+      user: root
+
+    host-d:
+      kind: linux
+      image: alpine:3.20
+      mgmt-ipv4: 10.255.255.34
+      binds:
+        - configs/hosts/host-d.init.sh:/init.sh
+      exec:
+        - sh /init.sh
+      user: root
+
+  # ── Links ──────────────────────────────────────────────────────────
+  links:
+
+    # Spine-leaf underlay (OSPF + eBGP)
+    # ── spine1 to every leaf ──
+    - endpoints: ["spine1:eth1", "leaf1:eth1"]
+    - endpoints: ["spine1:eth2", "leaf2:eth1"]
+    - endpoints: ["spine1:eth3", "leaf3:eth1"]
+    - endpoints: ["spine1:eth4", "leaf4:eth1"]
+
+    # ── spine2 to every leaf ──
+    - endpoints: ["spine2:eth1", "leaf1:eth2"]
+    - endpoints: ["spine2:eth2", "leaf2:eth2"]
+    - endpoints: ["spine2:eth3", "leaf3:eth2"]
+    - endpoints: ["spine2:eth4", "leaf4:eth2"]
+
+    # ── spine1 to spine2 (iBGP + OSPF) ──
+    - endpoints: ["spine1:eth5", "spine2:eth5"]
+
+    # Leaf-to-host links (access ports)
+    - endpoints: ["leaf1:eth3", "host-a:eth1"]
+    - endpoints: ["leaf2:eth3", "host-b:eth1"]
+    - endpoints: ["leaf3:eth3", "host-c:eth1"]
+    - endpoints: ["leaf4:eth3", "host-d:eth1"]

@@ -1,0 +1,19 @@
+---
+# Group vars for all routers (spines + leaves)
+# Applied to all nodes in the 'routers' group
+
+frr_config_dir: /etc/frr
+frr_daemons:
+  zebra: yes
+  bgpd: yes
+  ospfd: yes
+  bfdd: yes
+
+# OSPF settings
+ospf_area: 0
+ospf_network_type: point-to-point
+
+# BGP settings
+bgp_overlay_enabled: true
+bgp_update_source: lo
+bgp_ebgp_multihop: 2

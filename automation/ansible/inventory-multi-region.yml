@@ -1,0 +1,389 @@
+# Ansible inventory — Multi-Region Networking Lab
+# Three datacenters, each with independent management network.
+#
+# Each region is deployed on its own EC2 host. Run Ansible from within
+# each EC2 host (or via bastion SSH proxy) to manage that region's devices.
+#
+# Usage:
+#   ansible -i inventory-multi-region.yml dc_east -m ping
+#   ansible-playbook -i inventory-multi-region.yml playbooks/deploy-configs.yml --limit dc_east
+#   ansible-playbook -i inventory-multi-region.yml playbooks/deploy-configs.yml --limit dc_west
+#   ansible-playbook -i inventory-multi-region.yml playbooks/deploy-configs.yml --limit dc_eu
+
+all:
+  children:
+
+    # ══════════════════════════════════════════════════════════════════
+    # DC-EAST (us-east-1) — Management: 10.255.255.0/24
+    # ══════════════════════════════════════════════════════════════════
+    dc_east:
+      children:
+        dc_east_routers:
+        dc_east_hosts:
+      vars:
+        region: us-east-1
+        mgmt_subnet: 10.255.255.0/24
+        loopback_subnet: 10.255.0.0/24
+        underlay_subnet: 10.0.0.0/24
+        host_network: 10.10.0.0/16
+        services_subnet: 10.20.0.0/24
+        topology_file: topology-dc-east.clab.yml
+        lab_name: netlab-east
+
+    dc_east_routers:
+      children:
+        dc_east_spines:
+        dc_east_leaves:
+        dc_east_wan:
+
+    dc_east_spines:
+      hosts:
+        spine1:
+          ansible_host: 10.255.255.11
+          ansible_user: root
+          router_id: 10.255.0.1
+          asn: 65001
+          role: spine
+        spine2:
+          ansible_host: 10.255.255.12
+          ansible_user: root
+          router_id: 10.255.0.2
+          asn: 65001
+          role: spine
+
+    dc_east_leaves:
+      hosts:
+        leaf1:
+          ansible_host: 10.255.255.21
+          ansible_user: root
+          router_id: 10.255.0.11
+          asn: 65101
+          role: leaf
+          host_subnet: 10.10.1.0/24
+          host_gateway: 10.10.1.254
+        leaf2:
+          ansible_host: 10.255.255.22
+          ansible_user: root
+          router_id: 10.255.0.12
+          asn: 65102
+          role: leaf
+          host_subnet: 10.10.2.0/24
+          host_gateway: 10.10.2.254
+        leaf3:
+          ansible_host: 10.255.255.23
+          ansible_user: root
+          router_id: 10.255.0.13
+          asn: 65103
+          role: leaf
+          host_subnet: 10.10.3.0/24
+          host_gateway: 10.10.3.254
+        leaf4:
+          ansible_host: 10.255.255.24
+          ansible_user: root
+          router_id: 10.255.0.14
+          asn: 65104
+          role: leaf
+          host_subnet: 10.10.4.0/24
+          host_gateway: 10.10.4.254
+
+    dc_east_wan:
+      hosts:
+        wan-east:
+          ansible_host: 10.255.255.50
+          ansible_user: root
+          router_id: 10.255.0.100
+          asn: 65010
+          role: wan-edge
+          remote_peers:
+            - {name: wan-west, asn: 65020, loopback: 10.254.0.100}
+            - {name: wan-eu, asn: 65030, loopback: 10.253.0.100}
+
+    dc_east_hosts:
+      hosts:
+        host-a:
+          ansible_host: 10.255.255.31
+          ansible_user: root
+          data_ip: 10.10.1.1
+          data_subnet: 10.10.1.0/24
+          gateway: 10.10.1.254
+          leaf: leaf1
+        host-b:
+          ansible_host: 10.255.255.32
+          ansible_user: root
+          data_ip: 10.10.2.1
+          data_subnet: 10.10.2.0/24
+          gateway: 10.10.2.254
+          leaf: leaf2
+        host-c:
+          ansible_host: 10.255.255.33
+          ansible_user: root
+          data_ip: 10.10.3.1
+          data_subnet: 10.10.3.0/24
+          gateway: 10.10.3.254
+          leaf: leaf3
+        host-d:
+          ansible_host: 10.255.255.34
+          ansible_user: root
+          data_ip: 10.10.4.1
+          data_subnet: 10.10.4.0/24
+          gateway: 10.10.4.254
+          leaf: leaf4
+
+    # ══════════════════════════════════════════════════════════════════
+    # DC-WEST (us-west-2) — Management: 10.254.255.0/24
+    # ══════════════════════════════════════════════════════════════════
+    dc_west:
+      children:
+        dc_west_routers:
+        dc_west_hosts:
+      vars:
+        region: us-west-2
+        mgmt_subnet: 10.254.255.0/24
+        loopback_subnet: 10.254.0.0/24
+        underlay_subnet: 10.100.0.0/24
+        host_network: 10.11.0.0/16
+        services_subnet: 10.21.0.0/24
+        topology_file: topology-dc-west.clab.yml
+        lab_name: netlab-west
+
+    dc_west_routers:
+      children:
+        dc_west_spines:
+        dc_west_leaves:
+        dc_west_wan:
+
+    dc_west_spines:
+      hosts:
+        spine1:
+          ansible_host: 10.254.255.11
+          ansible_user: root
+          router_id: 10.254.0.1
+          asn: 65001
+          role: spine
+        spine2:
+          ansible_host: 10.254.255.12
+          ansible_user: root
+          router_id: 10.254.0.2
+          asn: 65001
+          role: spine
+
+    dc_west_leaves:
+      hosts:
+        leaf1:
+          ansible_host: 10.254.255.21
+          ansible_user: root
+          router_id: 10.254.0.11
+          asn: 65101
+          role: leaf
+          host_subnet: 10.11.1.0/24
+          host_gateway: 10.11.1.254
+        leaf2:
+          ansible_host: 10.254.255.22
+          ansible_user: root
+          router_id: 10.254.0.12
+          asn: 65102
+          role: leaf
+          host_subnet: 10.11.2.0/24
+          host_gateway: 10.11.2.254
+        leaf3:
+          ansible_host: 10.254.255.23
+          ansible_user: root
+          router_id: 10.254.0.13
+          asn: 65103
+          role: leaf
+          host_subnet: 10.11.3.0/24
+          host_gateway: 10.11.3.254
+        leaf4:
+          ansible_host: 10.254.255.24
+          ansible_user: root
+          router_id: 10.254.0.14
+          asn: 65104
+          role: leaf
+          host_subnet: 10.11.4.0/24
+          host_gateway: 10.11.4.254
+
+    dc_west_wan:
+      hosts:
+        wan-west:
+          ansible_host: 10.254.255.50
+          ansible_user: root
+          router_id: 10.254.0.100
+          asn: 65020
+          role: wan-edge
+          remote_peers:
+            - {name: wan-east, asn: 65010, loopback: 10.255.0.100}
+            - {name: wan-eu, asn: 65030, loopback: 10.253.0.100}
+
+    dc_west_hosts:
+      hosts:
+        host-a:
+          ansible_host: 10.254.255.31
+          ansible_user: root
+          data_ip: 10.11.1.1
+          data_subnet: 10.11.1.0/24
+          gateway: 10.11.1.254
+          leaf: leaf1
+        host-b:
+          ansible_host: 10.254.255.32
+          ansible_user: root
+          data_ip: 10.11.2.1
+          data_subnet: 10.11.2.0/24
+          gateway: 10.11.2.254
+          leaf: leaf2
+        host-c:
+          ansible_host: 10.254.255.33
+          ansible_user: root
+          data_ip: 10.11.3.1
+          data_subnet: 10.11.3.0/24
+          gateway: 10.11.3.254
+          leaf: leaf3
+        host-d:
+          ansible_host: 10.254.255.34
+          ansible_user: root
+          data_ip: 10.11.4.1
+          data_subnet: 10.11.4.0/24
+          gateway: 10.11.4.254
+          leaf: leaf4
+
+    # ══════════════════════════════════════════════════════════════════
+    # DC-EU (eu-west-1) — Management: 10.253.255.0/24
+    # ══════════════════════════════════════════════════════════════════
+    dc_eu:
+      children:
+        dc_eu_routers:
+        dc_eu_hosts:
+      vars:
+        region: eu-west-1
+        mgmt_subnet: 10.253.255.0/24
+        loopback_subnet: 10.253.0.0/24
+        underlay_subnet: 10.200.0.0/24
+        host_network: 10.12.0.0/16
+        services_subnet: 10.22.0.0/24
+        topology_file: topology-dc-eu.clab.yml
+        lab_name: netlab-eu
+
+    dc_eu_routers:
+      children:
+        dc_eu_spines:
+        dc_eu_leaves:
+        dc_eu_wan:
+
+    dc_eu_spines:
+      hosts:
+        spine1:
+          ansible_host: 10.253.255.11
+          ansible_user: root
+          router_id: 10.253.0.1
+          asn: 65001
+          role: spine
+        spine2:
+          ansible_host: 10.253.255.12
+          ansible_user: root
+          router_id: 10.253.0.2
+          asn: 65001
+          role: spine
+
+    dc_eu_leaves:
+      hosts:
+        leaf1:
+          ansible_host: 10.253.255.21
+          ansible_user: root
+          router_id: 10.253.0.11
+          asn: 65101
+          role: leaf
+          host_subnet: 10.12.1.0/24
+          host_gateway: 10.12.1.254
+        leaf2:
+          ansible_host: 10.253.255.22
+          ansible_user: root
+          router_id: 10.253.0.12
+          asn: 65102
+          role: leaf
+          host_subnet: 10.12.2.0/24
+          host_gateway: 10.12.2.254
+        leaf3:
+          ansible_host: 10.253.255.23
+          ansible_user: root
+          router_id: 10.253.0.13
+          asn: 65103
+          role: leaf
+          host_subnet: 10.12.3.0/24
+          host_gateway: 10.12.3.254
+        leaf4:
+          ansible_host: 10.253.255.24
+          ansible_user: root
+          router_id: 10.253.0.14
+          asn: 65104
+          role: leaf
+          host_subnet: 10.12.4.0/24
+          host_gateway: 10.12.4.254
+
+    dc_eu_wan:
+      hosts:
+        wan-eu:
+          ansible_host: 10.253.255.50
+          ansible_user: root
+          router_id: 10.253.0.100
+          asn: 65030
+          role: wan-edge
+          remote_peers:
+            - {name: wan-east, asn: 65010, loopback: 10.255.0.100}
+            - {name: wan-west, asn: 65020, loopback: 10.254.0.100}
+
+    dc_eu_hosts:
+      hosts:
+        host-a:
+          ansible_host: 10.253.255.31
+          ansible_user: root
+          data_ip: 10.12.1.1
+          data_subnet: 10.12.1.0/24
+          gateway: 10.12.1.254
+          leaf: leaf1
+        host-b:
+          ansible_host: 10.253.255.32
+          ansible_user: root
+          data_ip: 10.12.2.1
+          data_subnet: 10.12.2.0/24
+          gateway: 10.12.2.254
+          leaf: leaf2
+        host-c:
+          ansible_host: 10.253.255.33
+          ansible_user: root
+          data_ip: 10.12.3.1
+          data_subnet: 10.12.3.0/24
+          gateway: 10.12.3.254
+          leaf: leaf3
+        host-d:
+          ansible_host: 10.253.255.34
+          ansible_user: root
+          data_ip: 10.12.4.1
+          data_subnet: 10.12.4.0/24
+          gateway: 10.12.4.254
+          leaf: leaf4
+
+    # ══════════════════════════════════════════════════════════════════
+    # Cross-region groups (all spines, all leaves, all WAN edges)
+    # ══════════════════════════════════════════════════════════════════
+    all_spines:
+      children:
+        dc_east_spines:
+        dc_west_spines:
+        dc_eu_spines:
+
+    all_leaves:
+      children:
+        dc_east_leaves:
+        dc_west_leaves:
+        dc_eu_leaves:
+
+    all_wan_edges:
+      children:
+        dc_east_wan:
+        dc_west_wan:
+        dc_eu_wan:
+
+  # ── Global vars ────────────────────────────────────────────────────
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    frr_vtysh: "vtysh"

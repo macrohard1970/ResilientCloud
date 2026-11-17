@@ -1,0 +1,139 @@
+# Monitoring stack for the Free Networking Lab
+# Services network: 10.20.0.0/24
+#
+# Start:  docker compose up -d
+# Stop:   docker compose down
+# Logs:   docker compose logs -f
+#
+# Access:
+#   Grafana     http://localhost:3000  (admin/admin)
+#   Prometheus  http://localhost:9090
+#   Suzieq API  http://localhost:8000
+#   Batfish     http://localhost:9000
+#   gNMIc       http://localhost:7890
+
+networks:
+  monitoring:
+    name: clab-netlab-services
+    external: true    # Containerlab creates this; or create manually below
+  mgmt:
+    name: clab-netlab-mgmt
+    external: true
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  suzieq_data:
+
+services:
+
+  # ── Prometheus — metrics collection ──────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: netlab-prometheus
+    restart: unless-stopped
+    networks:
+      monitoring:
+        ipv4_address: 10.20.0.10
+      mgmt:
+        ipv4_address: 10.255.255.41
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+
+  # ── Grafana — dashboards & visualization ──────────────────────────
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: netlab-grafana
+    restart: unless-stopped
+    networks:
+      monitoring:
+        ipv4_address: 10.20.0.11
+      mgmt:
+        ipv4_address: 10.255.255.42
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  # ── gNMIc — gNMI telemetry collector ──────────────────────────────
+  gnmic:
+    image: ghcr.io/openconfig/gnmic:0.36.0
+    container_name: netlab-gnmic
+    restart: unless-stopped
+    networks:
+      monitoring:
+        ipv4_address: 10.20.0.14
+      mgmt:
+        ipv4_address: 10.255.255.45
+    volumes:
+      - ./gnmic/gnmic.yml:/etc/gnmic/gnmic.yml:ro
+    command: ["--config", "/etc/gnmic/gnmic.yml", "subscribe"]
+    ports:
+      - "9804:9804"   # Prometheus metrics endpoint
+    depends_on:
+      - prometheus
+
+  # ── Suzieq — network observability ────────────────────────────────
+  suzieq:
+    image: netenglabs/suzieq:0.22.1
+    container_name: netlab-suzieq
+    restart: unless-stopped
+    networks:
+      monitoring:
+        ipv4_address: 10.20.0.12
+      mgmt:
+        ipv4_address: 10.255.255.43
+    volumes:
+      - suzieq_data:/suzieq/parquet
+      - ./suzieq/suzieq.yml:/etc/suzieq/suzieq.yml:ro
+    ports:
+      - "8000:8000"
+
+  # ── Batfish — pre-deployment config analysis ──────────────────────
+  batfish:
+    image: batfish/batfish:latest
+    container_name: netlab-batfish
+    restart: unless-stopped
+    networks:
+      monitoring:
+        ipv4_address: 10.20.0.13
+      mgmt:
+        ipv4_address: 10.255.255.44
+    volumes:
+      - ./batfish/networks:/data/networks:ro
+    ports:
+      - "9996:9996"   # REST API
+      - "9000:9000"   # Question UI
+
+  # ── dnsmasq — DNS/DHCP for lab ────────────────────────────────────
+  dnsmasq:
+    image: astridyu/dnsmasq:latest
+    container_name: netlab-dnsmasq
+    restart: unless-stopped
+    networks:
+      monitoring:
+        ipv4_address: 10.20.0.15
+      mgmt:
+        ipv4_address: 10.255.255.46
+    volumes:
+      - ./dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:ro
+      - ./dnsmasq/hosts:/etc/hosts.lab:ro
+    command: ["--conf-file=/etc/dnsmasq.conf", "--no-daemon"]
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"

@@ -1,0 +1,11 @@
+---
+# Group vars for leaves
+
+# Leaves use eBGP to spines, advertise their connected host subnet
+leaf_to_spine: ebgp
+advertise_connected: true
+
+# Spine loopback IPs for BGP peering
+spine_peers:
+  - {ip: 10.255.0.1, asn: 65001, name: spine1}
+  - {ip: 10.255.0.2, asn: 65001, name: spine2}

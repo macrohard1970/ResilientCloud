@@ -1,0 +1,35 @@
+# Containerlab runtime artifacts
+*.clab.yml.bak
+__clab-*
+clab-*
+
+# Docker volumes
+monitoring/*_data/
+monitoring/**/data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Ansible
+*.retry
+ansible/*.log
+
+# Editor / OS files
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# SSH keys and secrets
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+known_hosts
+credentials.yml
+vault-password-file

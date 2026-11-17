@@ -1,0 +1,24 @@
+# Prometheus configuration
+# Scrape gNMIc metrics endpoint and self-monitor
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # gNMIc telemetry metrics (interface counters, BGP state, etc.)
+  - job_name: "gnmic"
+    static_configs:
+      - targets: ["gnmic:9804"]
+    scrape_interval: 10s
+
+  # Grafana metrics
+  - job_name: "grafana"
+    static_configs:
+      - targets: ["grafana:3000"]
+    metrics_path: /metrics

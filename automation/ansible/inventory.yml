@@ -1,0 +1,163 @@
+---
+# Ansible inventory — Free Networking Lab
+# All devices reachable via management network 10.255.255.0/24
+#
+# Usage:
+#   ansible -i inventory.yml all -m ping
+#   ansible-playbook -i inventory.yml playbooks/deploy-configs.yml
+
+all:
+  children:
+
+    # ── Spines (FRR, AS 65001) ───────────────────────────────────────
+    spines:
+      hosts:
+        spine1:
+          ansible_host: 10.255.255.11
+          ansible_user: root
+          router_id: 10.255.0.1
+          asn: 65001
+          role: spine
+        spine2:
+          ansible_host: 10.255.255.12
+          ansible_user: root
+          router_id: 10.255.0.2
+          asn: 65001
+          role: spine
+
+    # ── Leaves (FRR, unique ASNs) ────────────────────────────────────
+    leaves:
+      hosts:
+        leaf1:
+          ansible_host: 10.255.255.21
+          ansible_user: root
+          router_id: 10.255.0.11
+          asn: 65101
+          role: leaf
+          host_subnet: 10.10.1.0/24
+          host_gateway: 10.10.1.254
+          uplinks:
+            - {interface: eth1, peer: spine1, ip: 10.0.0.1/31}
+            - {interface: eth2, peer: spine2, ip: 10.0.0.9/31}
+          downlink: {interface: eth3, ip: 10.10.1.254/24}
+        leaf2:
+          ansible_host: 10.255.255.22
+          ansible_user: root
+          router_id: 10.255.0.12
+          asn: 65102
+          role: leaf
+          host_subnet: 10.10.2.0/24
+          host_gateway: 10.10.2.254
+          uplinks:
+            - {interface: eth1, peer: spine1, ip: 10.0.0.3/31}
+            - {interface: eth2, peer: spine2, ip: 10.0.0.11/31}
+          downlink: {interface: eth3, ip: 10.10.2.254/24}
+        leaf3:
+          ansible_host: 10.255.255.23
+          ansible_user: root
+          router_id: 10.255.0.13
+          asn: 65103
+          role: leaf
+          host_subnet: 10.10.3.0/24
+          host_gateway: 10.10.3.254
+          uplinks:
+            - {interface: eth1, peer: spine1, ip: 10.0.0.5/31}
+            - {interface: eth2, peer: spine2, ip: 10.0.0.13/31}
+          downlink: {interface: eth3, ip: 10.10.3.254/24}
+        leaf4:
+          ansible_host: 10.255.255.24
+          ansible_user: root
+          router_id: 10.255.0.14
+          asn: 65104
+          role: leaf
+          host_subnet: 10.10.4.0/24
+          host_gateway: 10.10.4.254
+          uplinks:
+            - {interface: eth1, peer: spine1, ip: 10.0.0.7/31}
+            - {interface: eth2, peer: spine2, ip: 10.0.0.15/31}
+          downlink: {interface: eth3, ip: 10.10.4.254/24}
+
+    # ── Routing nodes (all FRR routers combined) ────────────────────
+    routers:
+      children:
+        spines:
+        leaves:
+
+    # ── Endpoint hosts (Alpine) ─────────────────────────────────────
+    hosts_group:
+      hosts:
+        host-a:
+          ansible_host: 10.255.255.31
+          ansible_user: root
+          data_ip: 10.10.1.1
+          data_subnet: 10.10.1.0/24
+          gateway: 10.10.1.254
+          leaf: leaf1
+        host-b:
+          ansible_host: 10.255.255.32
+          ansible_user: root
+          data_ip: 10.10.2.1
+          data_subnet: 10.10.2.0/24
+          gateway: 10.10.2.254
+          leaf: leaf2
+        host-c:
+          ansible_host: 10.255.255.33
+          ansible_user: root
+          data_ip: 10.10.3.1
+          data_subnet: 10.10.3.0/24
+          gateway: 10.10.3.254
+          leaf: leaf3
+        host-d:
+          ansible_host: 10.255.255.34
+          ansible_user: root
+          data_ip: 10.10.4.1
+          data_subnet: 10.10.4.0/24
+          gateway: 10.10.4.254
+          leaf: leaf4
+
+    # ── Monitoring & services ──────────────────────────────────────
+    services:
+      hosts:
+        prometheus:
+          ansible_host: 10.255.255.41
+          ansible_user: root
+          ansible_connection: docker
+          service_ip: 10.20.0.10
+        grafana:
+          ansible_host: 10.255.255.42
+          ansible_user: root
+          ansible_connection: docker
+          service_ip: 10.20.0.11
+        suzieq:
+          ansible_host: 10.255.255.43
+          ansible_user: root
+          ansible_connection: docker
+          service_ip: 10.20.0.12
+        batfish:
+          ansible_host: 10.255.255.44
+          ansible_user: root
+          ansible_connection: docker
+          service_ip: 10.20.0.13
+        gnmic:
+          ansible_host: 10.255.255.45
+          ansible_user: root
+          ansible_connection: docker
+          service_ip: 10.20.0.14
+        dnsmasq:
+          ansible_host: 10.255.255.46
+          ansible_user: root
+          ansible_connection: docker
+          service_ip: 10.20.0.15
+
+  # ── Global vars ────────────────────────────────────────────────────
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    # FRR connection settings
+    frr_vtysh: "vtysh"
+    # Network constants
+    mgmt_subnet: 10.255.255.0/24
+    loopback_subnet: 10.255.0.0/24
+    underlay_subnet: 10.0.0.0/24
+    host_network: 10.10.0.0/16
+    services_subnet: 10.20.0.0/24
