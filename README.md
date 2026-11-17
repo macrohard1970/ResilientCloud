@@ -91,7 +91,10 @@ ResilientCloud/
 │       ├── bgp-peering.md            # BGP AS relationships and peering
 │       ├── traffic-flow.md           # Cross-region traffic path
 │       ├── resilience-failover.md    # Failure scenarios and recovery
-│       └── deployment-phases.md      # Phased deployment timeline
+│       ├── deployment-phases.md      # Phased deployment timeline
+│       ├── monitoring-observability.md # Telemetry, metrics, and validation flow
+│       ├── automation-workflow.md    # Deploy scripts, Containerlab, Ansible
+│       └── security-access.md        # Trust boundaries, SGs, access path
 ├── configs/
 │   ├── frr/
 │   │   ├── spine1/ spine2/ leaf1-4/      # DC-East (original + WAN edge)
