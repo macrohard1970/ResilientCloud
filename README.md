@@ -125,7 +125,7 @@ Each region deploys as a standalone Containerlab lab on an EC2 instance:
 
 ```bash
 # On each EC2 host (DC-East, DC-West, DC-EU):
-git clone <repo-url> ResilientCloud && cd ResilientCloud
+git clone https://github.com/macrohard80/ResilientCloud.git ResilientCloud && cd ResilientCloud
 
 # Deploy the region-specific topology
 sudo containerlab deploy -t topology-dc-east.clab.yml   # or -dc-west / -dc-eu

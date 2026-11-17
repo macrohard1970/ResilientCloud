@@ -178,7 +178,7 @@ sudo usermod -aG docker $USER
 bash -c "$(curl -sL https://get.containerlab.dev)"
 
 # Clone repo, deploy region-specific topology
-git clone <repo-url> networking-lab && cd networking-lab
+git clone https://github.com/macrohard80/ResilientCloud.git && cd ResilientCloud
 sudo containerlab deploy -t topology.clab.yml          # region-specific
 ansible-playbook -i inventory.yml playbooks/deploy-configs.yml
 cd monitoring && docker compose up -d
@@ -305,7 +305,7 @@ echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.d/99-lab.conf
 
 ```bash
 # On each EC2 host, deploy updated FRR configs including wan-edge:
-cd networking-lab/automation/ansible
+cd ResilientCloud/automation/ansible
 ansible-playbook -i inventory.yml playbooks/deploy-configs.yml
 ```
 

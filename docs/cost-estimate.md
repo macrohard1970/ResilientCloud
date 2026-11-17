@@ -202,8 +202,8 @@ sudo systemctl enable --now docker
 bash -c "$(curl -sL https://get.containerlab.dev)"
 
 # 3. Clone your lab repo and deploy
-git clone <your-repo> networking-lab
-cd networking-lab
+git clone https://github.com/macrohard80/ResilientCloud.git
+cd ResilientCloud
 sudo containerlab deploy -t topology.clab.yml
 ```
 
